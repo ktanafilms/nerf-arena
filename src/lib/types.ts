@@ -14,21 +14,16 @@ export interface Player extends Profile {
   connected: boolean;
 }
 
-export interface DuelConfig {
-  lives: number;
-  timeLimitSec: number; // 0 = sin límite
-  oneInChamber: boolean; // Una en la recámara
-  confirmedKill: boolean; // Baja confirmada
-}
-
-export type ModeConfig = DuelConfig;
+/** Ajustes de un modo: claves propias de cada modo (ver modes.ts). */
+export type ModeConfig = Record<string, number | boolean>;
 
 export type GamePhase =
   | 'countdown' // esperando a startAt (3-2-1-YA)
   | 'playing'
   | 'paused'
   | 'resuming' // cuenta atrás de 3 s tras "seguir"
-  | 'finalizing' // golpe letal: ventana para anular antes de cerrar
+  | 'finalizing' // ventana para anular antes de cerrar ronda/partida
+  | 'intermission' // entre rondas
   | 'ended';
 
 export type GEventKind =
@@ -41,7 +36,44 @@ export type GEventKind =
   | 'suddendeath'
   | 'lastlife'
   | 'win'
-  | 'draw';
+  | 'draw'
+  | 'roundstart'
+  | 'roundend'
+  // Juego de armas
+  | 'levelup'
+  | 'leveldown'
+  // Bomba
+  | 'bombstart'
+  | 'bombpass'
+  | 'blocked'
+  | 'explode'
+  // Cazador y presa
+  | 'hide'
+  | 'hunt'
+  | 'survived'
+  // Buscar y destruir
+  | 'plant'
+  | 'armed'
+  | 'defused'
+  // Tiro al blanco
+  | 'bombcan'
+  | 'call'
+  | 'claim'
+  | 'tie'
+  | 'nocall'
+  | 'bombhit';
+
+/** Marcador en un instante (se guarda en cada evento para el vídeo del HUD). */
+export interface SbSide {
+  main: string; // número grande
+  sub: string; // texto pequeño debajo
+}
+export interface Scoreboard {
+  A: SbSide;
+  B: SbSide;
+  center: string; // "Ronda 2", "Lata 3"…
+  clock: { kind: 'down' | 'up' | 'none'; ref: number }; // ref = gt final (down) o inicial (up)
+}
 
 export interface GEvent {
   id: number;
@@ -51,10 +83,10 @@ export interface GEvent {
   by?: string; // jugador que lo origina
   shooter?: string;
   victim?: string;
-  value?: number; // vidas restantes, etc.
+  value?: number; // vidas restantes, nivel, número de lata, ms…
   ref?: number; // evento anulado
   reason?: string;
-  golden?: boolean;
+  sb?: Scoreboard; // marcador tras el evento
 }
 
 export interface PlayerStats {
@@ -62,6 +94,12 @@ export interface PlayerStats {
   taken: number; // recibidos
   streak: number;
   bestStreak: number;
+}
+
+export interface Outcome {
+  scope: 'round' | 'game';
+  winner: string | null; // null = nadie gana la ronda / empate
+  reason: string;
 }
 
 export interface Game {
@@ -75,12 +113,16 @@ export interface Game {
   finalizeAt: number | null;
   endedAt: number | null;
   pauseReason: string | null;
-  lives: Record<string, number>;
+  prePause: GamePhase | null; // fase a la que volver tras la pausa
   stats: Record<string, PlayerStats>;
-  suddenDeath: boolean;
   winner: string | null; // null + ended = empate
   events: GEvent[];
   nextEventId: number;
+  round: number;
+  roundWins: Record<string, number>;
+  interUntil: number | null; // gt en que empieza la siguiente ronda
+  pending: Outcome | null; // resultado pendiente de confirmar (ventana de anular)
+  m: any; // estado propio del modo
 }
 
 export interface Room {
@@ -105,7 +147,10 @@ export type Intent =
   | { t: 'hit' } // "tocado": el emisor es la víctima
   | { t: 'undo' }
   | { t: 'pause' }
-  | { t: 'resume' };
+  | { t: 'resume' }
+  | { t: 'claim'; at?: number } // Tiro al blanco: "mía" (at = reloj del host estimado)
+  | { t: 'bombcan' } // Tiro al blanco: he tumbado la lata bomba
+  | { t: 'defuse' }; // Buscar y destruir: desactivada (se pulsa en el móvil-bomba)
 
 export interface ColorDef {
   id: string;

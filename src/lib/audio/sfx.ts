@@ -147,6 +147,39 @@ export const sfx = {
   click() {
     tone(1800, 0.03, { type: 'square', vol: 0.12 });
   },
+  /** Tic-tac de la bomba (vol 0..1) */
+  tick(vol = 1) {
+    noise(0.03, { freq: 3800, q: 4, vol: 0.5 * vol });
+    tone(1400, 0.03, { type: 'square', vol: 0.12 * vol });
+  },
+  /** Explosión */
+  boom() {
+    noise(1.4, { freq: 400, q: 0.5, vol: 1, type: 'lowpass' });
+    tone(90, 1.2, { type: 'sine', vol: 0.9, slide: 30 });
+    tone(55, 1.4, { type: 'sawtooth', vol: 0.35, slide: 25 });
+    noise(0.4, { freq: 2500, q: 0.6, vol: 0.5, at: 0.02 });
+  },
+  /** Pitido de localización (presa / móvil-bomba): fuerte y agudo */
+  ping() {
+    tone(2600, 0.12, { type: 'square', vol: 0.5, attack: 0.002 });
+    tone(2600, 0.12, { type: 'square', vol: 0.5, at: 0.18, attack: 0.002 });
+  },
+  /** Barrido del radar (solo cazador, suave) */
+  sweep() {
+    tone(900, 0.25, { type: 'sine', vol: 0.08, slide: 1400 });
+  },
+  levelup() {
+    [523, 659, 784, 1046, 1318].forEach((f, i) => tone(f, 0.16, { type: 'square', vol: 0.16, at: i * 0.06 }));
+    tone(1568, 0.5, { type: 'triangle', vol: 0.25, at: 0.3 });
+  },
+  /** Aviso de lata cantada */
+  call() {
+    tone(1200, 0.08, { type: 'square', vol: 0.4, attack: 0.001 });
+    tone(1800, 0.18, { type: 'square', vol: 0.4, at: 0.08, attack: 0.001 });
+  },
+  alert() {
+    for (let i = 0; i < 3; i++) tone(1000, 0.08, { type: 'square', vol: 0.35, at: i * 0.12 });
+  },
 };
 
 export function vibrate(pattern: number | number[]) {

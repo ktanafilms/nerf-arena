@@ -3,7 +3,7 @@
   import { app } from '../lib/app.svelte';
   import { MODES, modeInfo } from '../lib/modes';
   import { configFor } from '../lib/engine/room';
-  import type { DuelConfig } from '../lib/types';
+  import type { ModeConfig } from '../lib/types';
   import { sfx } from '../lib/audio/sfx';
   import Avatar from '../components/Avatar.svelte';
   import ModeIcon from '../components/ModeIcon.svelte';
@@ -11,13 +11,13 @@
   const s = app.session!;
   const room = $derived(s.room!);
   const info = $derived(modeInfo(room.mode));
-  const cfg = $derived(configFor(room) as DuelConfig);
+  const cfg = $derived(configFor(room) as ModeConfig);
   const iAmReady = $derived(!!room.ready[s.me]);
   const oppReady = $derived(!!(app.opp && room.ready[app.opp.id]));
   let rules = $state(false);
   let dir = $state(1);
 
-  function set(patch: Partial<DuelConfig>) {
+  function set(patch: ModeConfig) {
     sfx.click();
     s.send({ t: 'config', mode: room.mode, config: { ...cfg, ...patch } });
   }
@@ -30,12 +30,8 @@
     s.send({ t: 'selectMode', mode: next.id });
   }
 
-  const times = [180, 300, 600, 0];
-  const timeLabel = (v: number) => (v ? `${v / 60}′` : '∞');
-
   const rows = $derived([
-    { k: 'Vidas', label: String(cfg.lives), v: cfg.lives / 5 },
-    { k: 'Tiempo', label: timeLabel(cfg.timeLimitSec), v: cfg.timeLimitSec ? cfg.timeLimitSec / 600 : 1 },
+    ...info.facts(cfg).map((f) => ({ k: f.k, label: f.v, v: f.f })),
     ...info.bars.map((b) => ({ k: b.k, label: '', v: b.v })),
   ]);
 </script>
@@ -78,19 +74,25 @@
 
   {#if info.available}
     <div class="opts">
-      <div class="seg" role="group" aria-label="Tiempo">
-        {#each times as t}
-          <button class:on={cfg.timeLimitSec === t} onclick={() => set({ timeLimitSec: t })}>{timeLabel(t)}</button>
-        {/each}
-      </div>
-      <div class="vars">
-        <button class="var" class:on={cfg.oneInChamber} onclick={() => set({ oneInChamber: !cfg.oneInChamber })}>
-          <span class="chk">{cfg.oneInChamber ? '✓' : '+'}</span><span>Un solo dardo</span>
-        </button>
-        <button class="var" class:on={cfg.confirmedKill} onclick={() => set({ confirmedKill: !cfg.confirmedKill })}>
-          <span class="chk">{cfg.confirmedKill ? '✓' : '+'}</span><span>Baja confirmada</span>
-        </button>
-      </div>
+      {#each info.options as o}
+        <div class="optrow">
+          <span class="ol">{o.label}</span>
+          <div class="seg" role="group" aria-label={o.label} style="--n:{o.choices.length}">
+            {#each o.choices as ch}
+              <button class:on={Number(cfg[o.key]) === ch.v} onclick={() => set({ [o.key]: ch.v })}>{ch.l}</button>
+            {/each}
+          </div>
+        </div>
+      {/each}
+      {#if info.toggles.length}
+        <div class="vars">
+          {#each info.toggles as t}
+            <button class="var" class:on={!!cfg[t.key]} onclick={() => set({ [t.key]: !cfg[t.key] })}>
+              <span class="chk">{cfg[t.key] ? '✓' : '+'}</span><span>{t.label}</span>
+            </button>
+          {/each}
+        </div>
+      {/if}
     </div>
   {/if}
 
@@ -120,9 +122,7 @@
       {#if info.details.length}
         <ul>
           {#each info.details as d}<li>{d}</li>{/each}
-          <li><b>Un solo dardo:</b> empezáis con 1. Si fallas, ve a por él.</li>
-          <li><b>Baja confirmada:</b> solo vale si el tirador recoge su dardo. 10 s para anular.</li>
-        </ul>
+          </ul>
       {/if}
       <button class="btn small">Entendido</button>
     </div>
@@ -294,9 +294,24 @@
     flex-direction: column;
     gap: 6px;
   }
+  .optrow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .ol {
+    flex: none;
+    width: 30%;
+    font-family: var(--display);
+    font-weight: 900;
+    font-size: 18px;
+    text-transform: uppercase;
+    line-height: 1;
+  }
   .seg {
+    flex: 1;
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(var(--n), 1fr);
     background: var(--bg-2);
     border-radius: 6px;
     padding: 4px;
@@ -309,9 +324,10 @@
     color: var(--mute);
     font-family: var(--display);
     font-weight: 900;
-    font-size: 22px;
-    height: 40px;
+    font-size: 20px;
+    height: 38px;
     border-radius: 4px;
+    white-space: nowrap;
   }
   .seg button.on {
     background: var(--me);
@@ -434,8 +450,5 @@
     font-size: 15px;
     line-height: 1.5;
     color: var(--paper);
-  }
-  li b {
-    color: var(--mc);
   }
 </style>

@@ -5,6 +5,7 @@
   import { ALL_COMMANDS, type Command } from '../lib/voice/matcher';
   import { say } from '../lib/audio/narrator';
   import { callsignOf } from '../lib/types';
+  import { extraCommands } from '../lib/modes';
   import Lobby from './Lobby.svelte';
   import ModeScreen from './ModeScreen.svelte';
   import Game from './Game.svelte';
@@ -14,14 +15,14 @@
 
   // Eventos de la partida → efectos
   $effect(() => {
-    fx.sync(room, s.me);
+    fx.sync(room, s.me, s.now());
   });
 
   // Configurar la voz con mi indicativo
   $effect(() => {
     voice.callsign = callsignOf(app.me);
     voice.others = app.opp ? [callsignOf(app.opp)] : [];
-    voice.allowed = ALL_COMMANDS;
+    voice.allowed = [...ALL_COMMANDS, ...extraCommands(room?.mode ?? 'duelo')];
   });
 
   voice.onCommand = (c: Command) => handle(c);
@@ -30,7 +31,17 @@
     fx.confirm();
     switch (c) {
       case 'tocado':
+        if (s.room?.game?.mode === 'blanco') {
+          app.showToast(`En este modo di «${app.me?.name}, mía»`);
+          break;
+        }
         s.send({ t: 'hit' });
+        break;
+      case 'mia':
+        s.send({ t: 'claim', at: s.now() });
+        break;
+      case 'bomba':
+        s.send({ t: 'bombcan' });
         break;
       case 'anular':
         s.send({ t: 'undo' });

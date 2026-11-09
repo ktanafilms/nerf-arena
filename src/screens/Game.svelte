@@ -3,8 +3,8 @@
   import { app } from '../lib/app.svelte';
   import { fx, fmtClock } from '../lib/fx.svelte';
   import { gameTime } from '../lib/engine/room';
+  import { LOGIC } from '../lib/engine/logic';
   import { modeInfo } from '../lib/modes';
-  import type { DuelConfig } from '../lib/types';
   import { colorDef } from '../lib/types';
   import Avatar from '../components/Avatar.svelte';
   import type { Command } from '../lib/voice/matcher';
@@ -15,17 +15,20 @@
   import MicIndicator from '../components/MicIndicator.svelte';
   import Lives from '../components/Lives.svelte';
   import Result from './Result.svelte';
+  import DuelBody from '../components/hud/DuelBody.svelte';
+  import ArmasBody from '../components/hud/ArmasBody.svelte';
+  import BombaBody from '../components/hud/BombaBody.svelte';
+  import CazadorBody from '../components/hud/CazadorBody.svelte';
+  import BuscarBody from '../components/hud/BuscarBody.svelte';
+  import BlancoBody from '../components/hud/BlancoBody.svelte';
 
   let { onCommand }: { onCommand: (c: Command) => void } = $props();
 
   const s = app.session!;
   const room = $derived(s.room!);
   const g = $derived(room.game!);
-  const cfg = $derived(g.config as DuelConfig);
   const me = $derived(app.me!);
   const opp = $derived(app.opp!);
-  const myLives = $derived(g.lives[me.id] ?? 0);
-  const oppLives = $derived(g.lives[opp.id] ?? 0);
 
   // Reloj a 60 fps
   let now = $state(s.now());
@@ -40,20 +43,46 @@
   });
 
   const gt = $derived(gameTime(g, now));
-  const remaining = $derived(cfg.timeLimitSec > 0 ? Math.max(0, cfg.timeLimitSec * 1000 - gt) : null);
+  const sb = $derived(LOGIC[g.mode].scoreboard(room, g));
+  const oppSide = $derived(room.players[0]?.id === opp.id ? sb.A : sb.B);
   const cd = $derived(g.phase === 'countdown' ? Math.ceil((g.startAt - now) / 1000) : 0);
   const showGo = $derived(now >= g.startAt && now - g.startAt < 900);
   const resumeN = $derived(g.phase === 'resuming' && g.resumeAt ? Math.max(1, Math.ceil((g.resumeAt - now) / 1000)) : 0);
   const confirmLeft = $derived(g.phase === 'finalizing' && g.finalizeAt ? Math.max(0, g.finalizeAt - now) : 0);
+  const confirmWindow = $derived(g.mode === 'duelo' && g.config.confirmedKill ? 10000 : 5000);
+  const lastActor = $derived([...g.events].reverse().find((e) => ['hit', 'levelup'].includes(e.kind))?.by);
   const playing = $derived(g.phase === 'playing');
-  const critical = $derived((playing || g.phase === 'resuming') && (myLives === 1 || g.suddenDeath));
-  const lowTime = $derived(remaining !== null && remaining < 30000 && playing);
+  const live = $derived(playing || g.phase === 'resuming' || g.phase === 'finalizing');
   const realClock = $derived(Math.max(0, now - g.startAt)); // reloj real desde ¡YA! (para edición)
+  const interLeft = $derived(g.phase === 'intermission' && g.interUntil !== null ? Math.max(0, g.interUntil - gt) : 0);
+  const interN = $derived(interLeft > 0 && interLeft <= 3000 ? Math.ceil(interLeft / 1000) : 0);
+  const lastRound = $derived([...g.events].reverse().find((e) => e.kind === 'roundend'));
 
-  // Cuenta atrás 3-2-1 con pitidos y voz
+  // Aspecto general según el modo y la situación
+  const skin = $derived.by(() => {
+    const m = g.m;
+    switch (g.mode) {
+      case 'duelo':
+        return live && (m.lives?.[me.id] === 1 || m.sudden) ? 'critical' : 'me';
+      case 'armas':
+        return live && (m.level?.[me.id] === 6 || m.sudden) ? 'critical' : 'me';
+      case 'bomba':
+        return live && m.holder === me.id ? 'alarm' : 'dark';
+      case 'cazador':
+        return 'dark';
+      case 'buscar':
+        return m.sub === 'bomb' && m.attacker === me.id ? 'alarm' : m.sub === 'bomb' ? 'me' : 'dark';
+      default:
+        return 'me';
+    }
+  });
+  const critical = $derived(skin === 'critical');
+  const bombPhone = $derived(g.mode === 'buscar' && g.m.attacker === me.id && g.m.sub === 'bomb');
+
+  // Cuenta atrás 3-2-1 con pitidos y voz (inicio y entre rondas)
   let lastCd = 0;
   $effect(() => {
-    const n = cd > 3 ? 0 : cd;
+    const n = cd > 3 ? 0 : cd || interN;
     if (n !== lastCd && n >= 1 && n <= 3) {
       sfx.countdown();
       say(['', 'Uno', 'Dos', 'Tres'][n], { interrupt: true, rate: 1.2 });
@@ -78,12 +107,12 @@
     return () => clearInterval(t);
   });
 
-  // Temblor de pantalla al recibir impacto
+  // Temblor de pantalla al recibir impacto o explosión
   let hud = $state<HTMLElement>();
-  let lastHurt = fx.hurtKey;
+  let lastShake = fx.hurtKey + fx.boomKey * 1000;
   $effect(() => {
-    const k = fx.hurtKey;
-    if (k !== lastHurt && hud) {
+    const k = fx.hurtKey + fx.boomKey * 1000;
+    if (k !== lastShake && hud) {
       hud.animate(
         [
           { transform: 'translate(0,0)' },
@@ -97,16 +126,18 @@
         { duration: 450, easing: 'ease-out' },
       );
     }
-    lastHurt = k;
+    lastShake = k;
   });
 
-  // ─── Plan B táctil: doble toque = tocado, mantener = anular ───
+  // ─── Plan B táctil: doble toque = tocado (o "mía"), mantener = anular ───
+  const tapCommand: Command = $derived(g.mode === 'blanco' ? 'mia' : 'tocado');
   let lastTap = 0;
   let press: { x: number; y: number; t: number; timer: ReturnType<typeof setTimeout> } | null = null;
   let holding = $state<{ x: number; y: number } | null>(null);
 
   function down(e: PointerEvent) {
     if ((e.target as HTMLElement).closest('button, .nogesture')) return;
+    if (bombPhone) return; // el móvil-bomba lo toca el rival: sin gestos
     const x = e.clientX,
       y = e.clientY;
     holding = { x, y };
@@ -133,7 +164,7 @@
     const t = Date.now();
     if (t - lastTap < 380) {
       lastTap = 0;
-      onCommand('tocado');
+      onCommand(tapCommand);
     } else lastTap = t;
   }
   function cancel() {
@@ -147,15 +178,16 @@
   const mc = $derived(colorDef(me.color));
   const oc = $derived(colorDef(opp.color));
   const pcolor = (pid: string) => colorDef(room.players.find((p) => p.id === pid)?.color ?? '');
+  const winnerName = (pid?: string) => room.players.find((p) => p.id === pid)?.name ?? '';
 </script>
 
 {#if g.phase === 'ended'}
   <Result />
 {:else}
   <div
-    class="game"
+    class="game skin-{skin}"
     class:critical
-    style="--me:{mc.hex};--me-ink:{mc.ink};--opp:{oc.hex};--opp-ink:{oc.ink}"
+    style="--me:{mc.hex};--me-ink:{mc.ink};--opp:{oc.hex};--opp-ink:{oc.ink};--mc:{info.color}"
     onpointerdown={down}
     onpointerup={up}
     onpointercancel={cancel}
@@ -170,47 +202,50 @@
             <Avatar icon={opp.icon} color={opp.color} size={34} />
             <span>{opp.name}</span>
           </div>
-          <Lives total={cfg.lives} left={oppLives} size="small" />
+          {#if g.mode === 'duelo'}
+            <Lives total={Number(g.config.lives)} left={g.m.lives?.[opp.id] ?? 0} size="small" />
+          {:else}
+            <span class="osub">{oppSide.sub}</span>
+          {/if}
         </div>
-        <div class="onum num">{oppLives}</div>
+        <div class="onum num">{oppSide.main}</div>
         {#if !opp.connected}<div class="nosig">Sin conexión</div>{/if}
       </div>
 
       <!-- Datos -->
       <div class="meta">
         <span class="rec num">● {fmtClock(realClock, true)}</span>
+        {#if sb.center}<span class="center">{sb.center}</span>{/if}
         <MicIndicator />
       </div>
 
-      <!-- Tiempo -->
-      <div class="timer" class:low={lowTime}>
-        {#if g.suddenDeath}
-          <span class="sd">Muerte súbita</span>
-        {:else if remaining !== null}
-          <span class="tval num">{fmtClock(remaining)}</span>
-        {:else}
-          <span class="tval num dimv">{fmtClock(gt)}</span>
+      <!-- Cuerpo propio de cada modo -->
+      <div class="body">
+        {#if g.mode === 'duelo'}
+          <DuelBody {room} {g} {me} {gt} />
+        {:else if g.mode === 'armas'}
+          <ArmasBody {room} {g} {me} {gt} />
+        {:else if g.mode === 'bomba'}
+          <BombaBody {room} {g} {me} {opp} {gt} />
+        {:else if g.mode === 'cazador'}
+          <CazadorBody {room} {g} {me} {opp} {gt} />
+        {:else if g.mode === 'buscar'}
+          <BuscarBody {room} {g} {me} {opp} {gt} />
+        {:else if g.mode === 'blanco'}
+          <BlancoBody {room} {g} {me} {opp} {now} {onCommand} />
         {/if}
-      </div>
-
-      <!-- Dorsal: mis vidas -->
-      <div class="dorsal">
-        {#key myLives}
-          <div class="mnum num" in:scale={{ start: 1.35, duration: 320 }}>{myLives}</div>
-        {/key}
-        <Lives total={cfg.lives} left={myLives} shatterKey={fx.hurtKey} shatterIndex={fx.shatterIndex} />
-      </div>
-
-      <div class="mine">
-        <span class="myname">{me.name}</span>
-        {#if cfg.oneInChamber}<span class="variant">Una en la recámara</span>{/if}
-        {#if cfg.confirmedKill}<span class="variant">Baja confirmada</span>{/if}
       </div>
 
       {#if bot}
         <div class="botpanel nogesture">
-          <span>Rival simulado</span>
-          <button onclick={() => bot.bot({ t: 'hit' })}>Le doy</button>
+          {#if g.mode !== 'blanco'}<button onclick={() => bot.bot({ t: 'hit' })}>Le doy</button>{/if}
+          {#if g.mode === 'blanco'}
+            <button onclick={() => bot.bot({ t: 'claim', at: s.now() })}>Mía</button>
+            <button onclick={() => bot.bot({ t: 'bombcan' })}>Bomba</button>
+          {/if}
+          {#if g.mode === 'buscar' && g.m.attacker === opp.id}
+            <button onclick={() => bot.bot({ t: 'defuse' })}>Desactivo</button>
+          {/if}
           <button onclick={() => bot.bot({ t: 'undo' })}>Anula</button>
           <button onclick={() => bot.bot({ t: 'pause' })}>Pausa</button>
           <button onclick={() => bot.bot({ t: 'resume' })}>Sigue</button>
@@ -230,8 +265,10 @@
               </div>
             {/each}
           </div>
+        {:else if !bombPhone}
+          <div class="hint">Doble toque: {g.mode === 'blanco' ? '¡mía!' : 'tocado'}<br />Mantener: anular</div>
         {:else}
-          <div class="hint">Doble toque: tocado<br />Mantener: anular</div>
+          <span></span>
         {/if}
         <button class="pausebtn" onclick={() => onCommand('pausa')} aria-label="Pausa">
           <svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" /><rect x="14" y="5" width="4" height="14" /></svg>
@@ -242,6 +279,7 @@
     <!-- Efectos -->
     {#if critical}<div class="vignette"></div>{/if}
     {#key fx.hurtKey}{#if fx.hurtKey}<div class="hurtflash"></div>{/if}{/key}
+    {#key fx.boomKey}{#if fx.boomKey}<div class="boomflash"></div>{/if}{/key}
     {#key fx.flashKey}{#if fx.flashKey}<div class="confirmflash"></div>{/if}{/key}
     {#key fx.goKey}{#if fx.goKey}<div class="goflash"></div>{/if}{/key}
     {#key fx.hitKey}
@@ -268,6 +306,7 @@
     <!-- Cuenta atrás de inicio -->
     {#if g.phase === 'countdown'}
       <div class="overlay dark">
+        <span class="eyebrow">{info.name}</span>
         {#if cd >= 1 && cd <= 3}
           {#key cd}<div class="cdn num" in:scale={{ start: 1.8, duration: 360 }}>{cd}</div>{/key}
         {/if}
@@ -276,6 +315,29 @@
     {/if}
     {#if showGo}
       <div class="overlay go" out:fade={{ duration: 300 }}><div class="gotext">¡Ya!</div></div>
+    {/if}
+
+    <!-- Entre rondas -->
+    {#if g.phase === 'intermission'}
+      <div class="overlay dark inter" transition:fade={{ duration: 200 }}>
+        {#if interN}
+          {#key interN}<div class="cdn num" in:scale={{ start: 1.8, duration: 340 }}>{interN}</div>{/key}
+          <span class="eyebrow">Ronda {g.round + 1}</span>
+        {:else}
+          <span class="eyebrow">Fin de la ronda {g.round}</span>
+          <div class="ititle">
+            {#if lastRound?.by}{lastRound.by === me.id ? 'Ronda para ti' : `Ronda para ${winnerName(lastRound.by)}`}{:else}Siguiente ronda{/if}
+          </div>
+          {#if lastRound?.reason}<p class="pwho">{lastRound.reason}</p>{/if}
+          <div class="iscore">
+            <span style="color:{mc.hex}">{me.name}</span>
+            <b class="num">{g.mode === 'cazador' ? fmtClock(g.m.survived?.[me.id] ?? 0) : (g.roundWins[me.id] ?? 0)}</b>
+            <span class="dash">–</span>
+            <b class="num">{g.mode === 'cazador' ? fmtClock(g.m.survived?.[opp.id] ?? 0) : (g.roundWins[opp.id] ?? 0)}</b>
+            <span style="color:{oc.hex}">{opp.name}</span>
+          </div>
+        {/if}
+      </div>
     {/if}
 
     <!-- Pausa -->
@@ -301,18 +363,18 @@
       </div>
     {/if}
 
-    <!-- Confirmación de baja -->
+    <!-- Ventana para anular -->
     {#if g.phase === 'finalizing'}
       <div class="confirmbar nogesture">
-        <div class="cbfill" style="width:{(confirmLeft / (cfg.confirmedKill ? 10000 : 5000)) * 100}%"></div>
+        <div class="cbfill" style="width:{(confirmLeft / confirmWindow) * 100}%"></div>
         <span>
           {Math.ceil(confirmLeft / 1000)} s ·
-          {g.winner === me.id ? 'el rival aún puede anular' : `di «${me.name}, anular» o mantén pulsado`}
+          {lastActor === me.id ? `di «${me.name}, anular» o mantén pulsado` : 'el rival aún puede anular'}
         </span>
       </div>
     {/if}
 
-    {#if (voice.state === 'off' || voice.state === 'tap') && (playing || g.phase === 'countdown')}
+    {#if (voice.state === 'off' || voice.state === 'tap') && (live || g.phase === 'countdown')}
       <button class="micoff nogesture" onclick={() => voice.start()}>{voice.errorMsg ?? 'Toca para activar el micro'}</button>
     {:else if (voice.state === 'denied' || voice.state === 'unavailable') && g.phase === 'countdown'}
       <div class="micoff nogesture">{voice.errorMsg}</div>
@@ -411,89 +473,6 @@
     letter-spacing: 0.02em;
   }
 
-  .timer {
-    text-align: center;
-    margin-top: 4px;
-    margin-bottom: 10px;
-  }
-  .tval {
-    font-size: min(12vh, 108px);
-    line-height: 0.85;
-  }
-  .dimv {
-    opacity: 0.6;
-  }
-  .timer.low .tval {
-    animation: blink 0.5s steps(2) infinite;
-  }
-  .sd {
-    font-family: var(--display);
-    font-weight: 900;
-    font-size: 54px;
-    text-transform: uppercase;
-    animation: blink 0.8s infinite;
-  }
-
-  /* dorsal */
-  .dorsal {
-    flex: 1;
-    min-height: 0;
-    container-type: size;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 14px;
-  }
-  .mnum {
-    font-size: min(40vh, 360px);
-    /* se ajusta al hueco real (descontando las barras de vida) */
-    font-size: min(calc((100cqh - 40px) / 0.8), 80cqw, 380px);
-    line-height: 0.76;
-    letter-spacing: -0.03em;
-  }
-  .critical .mnum {
-    animation: beat 0.95s infinite;
-  }
-  @keyframes beat {
-    0%,
-    100% {
-      transform: scale(1);
-    }
-    10% {
-      transform: scale(1.06);
-    }
-    25% {
-      transform: scale(1.01);
-    }
-    35% {
-      transform: scale(1.05);
-    }
-  }
-  .mine {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    padding-bottom: 8px;
-  }
-  .myname {
-    font-family: var(--display);
-    font-weight: 900;
-    font-size: 40px;
-    text-transform: uppercase;
-    line-height: 1;
-  }
-  .variant {
-    font-size: 12px;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    border: 2px solid currentColor;
-    padding: 2px 8px;
-  }
-
   .foot {
     display: flex;
     align-items: flex-end;
@@ -522,7 +501,9 @@
     width: 30px;
     fill: var(--me);
   }
-  .critical .pausebtn svg {
+  .critical .pausebtn svg,
+  .skin-dark .pausebtn svg,
+  .skin-alarm .pausebtn svg {
     fill: #0d0d0d;
   }
   .pausebtn:active {
@@ -823,7 +804,7 @@
   }
   .micoff {
     position: absolute;
-    top: calc(var(--sat) + 140px);
+    bottom: calc(var(--sab) + 100px);
     left: 20px;
     right: 20px;
     text-align: center;
@@ -866,5 +847,89 @@
     text-transform: uppercase;
     padding: 8px 6px;
     border-radius: 3px;
+  }
+
+  /* ── aspectos ── */
+  .game.skin-dark {
+    background: #101010;
+    color: var(--paper);
+  }
+  .game.skin-alarm {
+    background: #120404;
+    color: #fff;
+    animation: alarm 1s steps(2) infinite;
+  }
+  @keyframes alarm {
+    50% {
+      background: #3a0608;
+    }
+  }
+  .body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+  .center {
+    font-size: 12px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    opacity: 0.8;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .osub {
+    font-size: 12px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    opacity: 0.85;
+  }
+  .boomflash {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 41;
+    background: radial-gradient(circle, #fff 0%, #ffd23f 25%, #ff5a1f 55%, transparent 80%);
+    animation: boom 0.9s ease-out forwards;
+  }
+  @keyframes boom {
+    0% {
+      opacity: 1;
+      transform: scale(0.3);
+    }
+    30% {
+      opacity: 1;
+      transform: scale(1.6);
+    }
+    100% {
+      opacity: 0;
+      transform: scale(2.2);
+    }
+  }
+  .inter .ititle {
+    font-family: var(--display);
+    font-weight: 900;
+    font-size: clamp(48px, 9vh, 80px);
+    text-transform: uppercase;
+    line-height: 0.9;
+  }
+  .iscore {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    font-family: var(--display);
+    font-weight: 900;
+    font-size: 22px;
+    text-transform: uppercase;
+  }
+  .iscore b {
+    font-size: 54px;
+  }
+  .iscore .dash {
+    opacity: 0.5;
   }
 </style>

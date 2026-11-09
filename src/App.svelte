@@ -17,6 +17,11 @@
   // Solo en desarrollo: ?demo=lobby|mode|game|result para revisar pantallas
   if (import.meta.env.DEV) {
     const demo = params.get('demo');
+    if (params.has('still')) {
+      const st = document.createElement('style');
+      st.textContent = '.goflash,.hurtflash,.boomflash,.confirmflash,.hitmarker,.banner,.wipe{display:none!important}';
+      document.head.appendChild(st);
+    }
     if (demo === 'vozfile') {
       // prueba del reconocimiento con una grabación, sin micro
       (async () => {
@@ -49,13 +54,14 @@
     } else if (demo && demo !== '1') {
       app.solo();
       const s = app.session as any;
-      if (demo !== 'lobby') s.send({ t: 'selectMode', mode: 'duelo' });
+      if (demo !== 'lobby') s.send({ t: 'selectMode', mode: (params.get('mode') as any) ?? 'duelo' });
       if (demo === 'game' || demo === 'result') {
         s.send({ t: 'ready', ready: true });
-        setTimeout(() => {
-          s.bot({ t: 'hit' });
-          s.send({ t: 'hit' });
-        }, 4200);
+        if (!params.has('nohit'))
+          setTimeout(() => {
+            s.bot({ t: 'hit' });
+            s.send({ t: 'hit' });
+          }, 4200);
         if (demo === 'result') setTimeout(() => [0, 1].forEach(() => s.send({ t: 'hit' })), 4400);
       }
     }

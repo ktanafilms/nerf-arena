@@ -30,12 +30,65 @@
     }
   }
 
-  const rows = $derived([
-    { k: 'Aciertos', a: g.stats[me.id]?.hits ?? 0, b: g.stats[opp.id]?.hits ?? 0, hi: true },
-    { k: 'Recibidos', a: g.stats[me.id]?.taken ?? 0, b: g.stats[opp.id]?.taken ?? 0, hi: false },
-    { k: 'Mejor racha', a: g.stats[me.id]?.bestStreak ?? 0, b: g.stats[opp.id]?.bestStreak ?? 0, hi: true },
-    { k: 'Vidas', a: g.lives[me.id] ?? 0, b: g.lives[opp.id] ?? 0, hi: true },
-  ]);
+  const rows = $derived.by(() => {
+    const m = g.m;
+    const st = (pid: string) => g.stats[pid] ?? { hits: 0, taken: 0, bestStreak: 0 };
+    const a = me.id,
+      b = opp.id;
+    const row = (k: string, va: number | string, vb: number | string, hi: 'max' | 'min' | 'none' = 'max', sa?: number, sbv?: number) => ({
+      k,
+      a: va,
+      b: vb,
+      hi,
+      na: sa ?? Number(va),
+      nb: sbv ?? Number(vb),
+    });
+    const avg = (l: number[]) => (l.length ? Math.round(l.reduce((x, y) => x + y, 0) / l.length) : 0);
+    switch (g.mode) {
+      case 'duelo':
+        return [
+          row('Aciertos', st(a).hits, st(b).hits),
+          row('Recibidos', st(a).taken, st(b).taken, 'min'),
+          row('Mejor racha', st(a).bestStreak, st(b).bestStreak),
+          row('Vidas', m.lives[a], m.lives[b]),
+        ];
+      case 'armas':
+        return [
+          row('Nivel', m.level[a], m.level[b]),
+          row('Aciertos', st(a).hits, st(b).hits),
+          row('Humillaciones', m.humiliations[a], m.humiliations[b], 'min'),
+          row('Mejor racha', st(a).bestStreak, st(b).bestStreak),
+        ];
+      case 'bomba':
+        return [
+          row('Rondas', g.roundWins[a], g.roundWins[b]),
+          row('Pases', m.passes[a], m.passes[b]),
+          row('Explosiones', m.explosions[a], m.explosions[b], 'min'),
+        ];
+      case 'cazador':
+        return [
+          row('Aguantó', fmtClock(m.survived[a] ?? 0), fmtClock(m.survived[b] ?? 0), 'max', m.survived[a] ?? 0, m.survived[b] ?? 0),
+          row('Cazas', st(a).hits, st(b).hits),
+        ];
+      case 'buscar':
+        return [
+          row('Rondas', g.roundWins[a], g.roundWins[b]),
+          row('Desactivadas', m.defusals[a], m.defusals[b]),
+          row('Bajas', m.kills[a], m.kills[b]),
+          row('Explosiones', m.detonations[a], m.detonations[b]),
+        ];
+      case 'blanco': {
+        const best = (pid: string) => (m.reactions[pid].length ? Math.min(...m.reactions[pid]) : 0);
+        return [
+          row('Puntos', m.points[a], m.points[b]),
+          row('Mejor reacción', best(a) ? `${best(a)} ms` : '—', best(b) ? `${best(b)} ms` : '—', 'min', best(a) || 1e9, best(b) || 1e9),
+          row('Reacción media', avg(m.reactions[a]) ? `${avg(m.reactions[a])} ms` : '—', avg(m.reactions[b]) ? `${avg(m.reactions[b])} ms` : '—', 'min', avg(m.reactions[a]) || 1e9, avg(m.reactions[b]) || 1e9),
+          row('Latas bomba', m.bombs[a], m.bombs[b], 'min'),
+        ];
+      }
+    }
+    return [];
+  });
 </script>
 
 <div class="result">
@@ -62,11 +115,12 @@
         <b style="color:{colorDef(opp.color).hex}">{opp.name}</b>
       </div>
       {#each rows as r}
-        {@const best = r.hi ? Math.max(r.a, r.b) : Math.min(r.a, r.b)}
+        {@const aWins = r.hi !== 'none' && r.na !== r.nb && (r.hi === 'max' ? r.na > r.nb : r.na < r.nb)}
+        {@const bWins = r.hi !== 'none' && r.na !== r.nb && !aWins}
         <div class="sr">
           <span class="k">{r.k}</span>
-          <b class="num" class:best={r.a === best && r.a !== r.b}>{r.a}</b>
-          <b class="num" class:best={r.b === best && r.a !== r.b}>{r.b}</b>
+          <b class="num" class:best={aWins}>{r.a}</b>
+          <b class="num" class:best={bWins}>{r.b}</b>
         </div>
       {/each}
     </div>

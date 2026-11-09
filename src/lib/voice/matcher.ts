@@ -1,6 +1,6 @@
 // Interpreta transcripciones: "[indicativo] [orden]". Tolerante a errores pero estricto en el orden.
 
-export type Command = 'tocado' | 'estado' | 'pausa' | 'seguir' | 'anular' | 'mia';
+export type Command = 'tocado' | 'estado' | 'pausa' | 'seguir' | 'anular' | 'mia' | 'bomba';
 
 const COMMANDS: Record<Command, string[]> = {
   tocado: ['tocado', 'tocada', 'tocados', 'tocao', 'toca do', 'me han dado', 'me dieron', 'me dio', 'me han tocado', 'me han dao', 'herido'],
@@ -9,6 +9,7 @@ const COMMANDS: Record<Command, string[]> = {
   seguir: ['seguir', 'sigue', 'seguimos', 'siga', 'continuar', 'continua', 'continuamos', 'reanudar', 'reanuda'],
   anular: ['anular', 'anula', 'anulado', 'anulo', 'cancelar', 'cancela', 'deshacer', 'deshaz'],
   mia: ['mia', 'mio', 'mias', 'es mia', 'mi a'],
+  bomba: ['bomba', 'la bomba', 'bombas'],
 };
 
 // Palabras de relleno que se pueden colar entre indicativo y orden
