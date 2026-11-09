@@ -16,6 +16,13 @@ App árbitro para partidas de Nerf a 2 jugadores, con un móvil cada uno. Es una
 
 **Modo prueba**: «Probar en un solo móvil» crea un rival simulado (bot) con botones para que haga de segundo jugador.
 
+## Formas de jugar y de conectarse
+
+- **Dos móviles (lo normal):** la app intenta a la vez la conexión **directa** entre móviles (la más rápida) y un **respaldo por servidor** (mensajería pública MQTT). Si la wifi bloquea la directa, la partida va sola por el respaldo, también con datos móviles. En el lobby, la etiqueta de conexión indica qué ruta se usa y qué hacer si falla.
+- **Punto de acceso:** uno comparte internet y el otro se conecta a esa wifi. Es lo más fiable fuera de casa.
+- **Un móvil para los dos:** un único móvil hace de árbitro y entiende los dos nombres. Cada jugador tiene sus botones en pantalla. **No necesita ninguna red.**
+- **Bluetooth / AirDrop:** no son posibles. Safari no deja a las webs usar Bluetooth, y AirDrop solo envía archivos.
+
 ## Modos
 
 | Modo | En una frase | Órdenes |
@@ -40,6 +47,14 @@ Al terminar una partida, **Vídeo del HUD** genera en el propio móvil un `.mov`
 - Empieza 3 s antes del ¡YA!: el pitido de claqueta cae justo en el segundo 3.
 - Códec PNG con canal alfa: se abre en Premiere, Final Cut, DaVinci Resolve y After Effects. Ponlo en una pista encima del vídeo de la cámara.
 - En iPhone, guárdalo con «Guardar en Archivos» o pásalo por AirDrop. Si lo guardas en Fotos, se pierde la transparencia.
+
+## Historial, marcadores y modo grabación
+
+- **Historial:** cada partida terminada se guarda en el móvil (las 40 últimas). Desde ahí se puede sacar después el vídeo del HUD o los marcadores.
+- **Marcadores:** XML para Premiere (Archivo › Importar), EDL para DaVinci (Marcadores › Importar EDL) y CSV. Cuentan desde el inicio del vídeo del HUD.
+- **Modo grabación** (en el lobby): la partida solo muestra lo que aporta en vídeo, con el reloj grande.
+- **Extras** de Duelo y Juego de armas: eventos sorpresa (recarga libre, ¡congelados!, dardo dorado) y racha UAV.
+- **Voz del narrador:** se elige en «Probar voz».
 
 ## Sincronizar con vuestras cámaras
 
