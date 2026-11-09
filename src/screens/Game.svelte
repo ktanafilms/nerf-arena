@@ -313,7 +313,7 @@
     {/if}
 
     {#if (voice.state === 'off' || voice.state === 'tap') && (playing || g.phase === 'countdown')}
-      <button class="micoff nogesture" onclick={() => voice.start()}>Toca para activar el micro</button>
+      <button class="micoff nogesture" onclick={() => voice.start()}>{voice.errorMsg ?? 'Toca para activar el micro'}</button>
     {:else if (voice.state === 'denied' || voice.state === 'unavailable') && g.phase === 'countdown'}
       <div class="micoff nogesture">{voice.errorMsg}</div>
     {/if}

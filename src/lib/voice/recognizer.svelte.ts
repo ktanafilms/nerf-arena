@@ -1,5 +1,8 @@
-// Reconocimiento de voz continuo (Web Speech API) con reinicio automático,
-// filtro por nombre y bloqueo mientras habla el narrador.
+// Reconocimiento de voz continuo con dos motores:
+//  · 'web'  → el del navegador (Web Speech API: Siri en iPhone, Google en Android)
+//  · 'vosk' → motor propio dentro de la app (sin Siri ni internet; modelo de 40 MB)
+// Si el del navegador no está disponible, se pasa al propio automáticamente.
+// Filtra por nombre y descarta lo que oye mientras habla el narrador.
 //
 // Importante: NO se abre el micrófono por otra vía (getUserMedia) a la vez,
 // porque en iPhone y en muchos Android eso hace fallar al reconocedor con "not-allowed".
@@ -7,17 +10,31 @@
 import { parseCommands, type Callsign, type Command } from './matcher';
 import { narratorBusy } from '../audio/narrator';
 import { isIOS, isStandalone } from '../device';
+import { VoskEngine, voskModelStored } from './vosk-engine';
 
 const SR: any = typeof window !== 'undefined' ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition : null;
 
-export const speechSupported = !!SR;
+const voskSupported =
+  typeof window !== 'undefined' && typeof WebAssembly === 'object' && !!navigator.mediaDevices?.getUserMedia;
+
+export const speechSupported = !!SR || voskSupported;
+
+export type Engine = 'web' | 'vosk';
+function initialEngine(): Engine {
+  try {
+    const e = localStorage.getItem('nerf.voiceEngine');
+    if (e === 'vosk' && voskSupported) return 'vosk';
+    if (e === 'web' && SR) return 'web';
+  } catch {}
+  return SR ? 'web' : 'vosk';
+}
 
 /**
  * off: apagado · starting: arrancando · listening: escuchando
  * tap: hay que tocar para (re)activarlo · denied: permiso denegado de verdad
  * unavailable: el servicio de voz del sistema no está disponible · unsupported: navegador sin voz
  */
-export type VoiceState = 'off' | 'starting' | 'listening' | 'tap' | 'denied' | 'unavailable' | 'unsupported';
+export type VoiceState = 'off' | 'loading' | 'starting' | 'listening' | 'tap' | 'denied' | 'unavailable' | 'unsupported';
 
 export interface Heard {
   text: string;
@@ -52,6 +69,10 @@ class Recognizer {
   lastError = $state<string | null>(null); // código técnico, para diagnóstico
   level = $state(0); // 0..1 actividad de voz (estimada por los eventos del reconocedor)
   heard = $state<Heard | null>(null);
+  engine = $state<Engine>(initialEngine());
+  progress = $state(0); // descarga del modelo propio (0..1)
+  private vosk: VoskEngine | null = null;
+  private utt = 100000; // índice de frase para el motor propio
   /** Registro de eventos (diagnóstico en la prueba de voz) */
   log = $state<string[]>([]);
   private t0 = Date.now();
@@ -80,12 +101,13 @@ class Recognizer {
 
   /** Llamar SIEMPRE desde un toque del usuario (iOS lo exige). */
   start() {
-    this.note('start() ← toque');
-    if (!SR) {
+    this.note(`start() ← toque [${this.engine === 'web' ? 'navegador' : 'propio'}]`);
+    if (!speechSupported) {
       this.state = 'unsupported';
       return;
     }
     this.wanted = true;
+    if (this.engine === 'vosk') return this.startVosk();
     this.notAllowedStreak = 0;
     this.failures = 0;
     if (this.restartTimer) clearTimeout(this.restartTimer);
@@ -108,8 +130,69 @@ class Recognizer {
     if (this.wanted) this.start();
   }
 
+  /** Cambiar de motor (lo guarda para la próxima vez). Llamar desde un toque. */
+  useEngine(e: Engine) {
+    const was = this.wanted;
+    this.stop();
+    this.engine = e;
+    try {
+      localStorage.setItem('nerf.voiceEngine', e);
+    } catch {}
+    this.note(`motor: ${e === 'web' ? 'navegador' : 'propio'}`);
+    if (was || e === 'vosk') this.start();
+  }
+
+  private startVosk() {
+    if (this.vosk?.active && (this.state === 'listening' || this.state === 'loading' || this.state === 'starting')) return;
+    this.vosk?.stop();
+    this.state = voskModelStored() ? 'starting' : 'loading';
+    this.errorMsg = null;
+    this.progress = 0;
+    this.startDecay();
+    const eng = new VoskEngine({
+      onPartial: (t) => this.handleText(t, false, this.utt),
+      onFinal: (t) => {
+        this.note(`oído: «${t.slice(0, 30)}»`);
+        this.handleText(t, true, this.utt);
+        this.utt++;
+      },
+      onLevel: (v) => {
+        this.target = v;
+      },
+      onProgress: (f) => {
+        this.progress = f;
+      },
+      onReady: () => {
+        this.state = 'listening';
+        this.everListened = true;
+        this.note('escuchando (motor propio)');
+      },
+    });
+    this.vosk = eng;
+    eng.start().catch((err: any) => {
+      if (this.vosk !== eng) return;
+      const name = err?.name ?? '';
+      this.lastError = name || String(err?.message ?? err);
+      this.note(`error: ${this.lastError}`);
+      if (name === 'NotAllowedError' || name === 'SecurityError') {
+        this.state = 'denied';
+        this.errorMsg = isIOS
+          ? 'Safari tiene el micrófono bloqueado para esta web. Toca «aA» en la barra de direcciones › Ajustes del sitio web › Micrófono › Permitir.'
+          : 'El navegador tiene el micrófono bloqueado para esta web. Revisa los permisos del sitio.';
+      } else if (name === 'NotReadableError' || name === 'AbortError') {
+        this.state = 'tap';
+        this.errorMsg = 'Otra app está usando el micrófono. Ciérrala y toca para reintentar.';
+      } else {
+        this.state = 'unavailable';
+        this.errorMsg = `No se pudo cargar el reconocedor propio: ${err?.message ?? err}. Comprueba la conexión y reintenta.`;
+      }
+    });
+  }
+
   stop() {
     this.wanted = false;
+    this.vosk?.stop();
+    this.vosk = null;
     if (this.restartTimer) clearTimeout(this.restartTimer);
     try {
       this.rec?.abort();
@@ -200,15 +283,24 @@ class Recognizer {
       return;
     }
     if (err === 'service-not-allowed' || err === 'language-not-supported') {
-      // probar otra variante de español en el siguiente intento
+      if (voskSupported) {
+        // El sistema no deja usar su voz: pasamos al reconocedor propio de la app
+        this.engine = 'vosk';
+        try {
+          localStorage.setItem('nerf.voiceEngine', 'vosk');
+        } catch {}
+        this.state = 'tap';
+        this.errorMsg = voskModelStored()
+          ? 'Usaremos el reconocedor propio de la app. Toca para activar el micro.'
+          : 'Tu móvil no deja usar su reconocimiento de voz. Usaremos el reconocedor propio de la app (descarga única de 40 MB, mejor con wifi). Toca para activarlo.';
+        this.note('→ cambio a motor propio');
+        return;
+      }
       if (!this.everListened) langIdx = (langIdx + 1) % LANGS.length;
       this.state = 'unavailable';
-      this.errorMsg =
-        isIOS && isStandalone
-          ? 'En iPhone la voz no funciona desde el icono de inicio. Abre la web en Safari.'
-          : isIOS
-            ? `iOS no deja usar el reconocimiento de voz (variante probada: ${LANGS[(langIdx + LANGS.length - 1) % LANGS.length] || 'por defecto'}). Pulsa «Reintentar» para probar otra variante de español. Si ninguna va: Ajustes › Siri › activa Siri, y en Tiempo de uso › Restricciones permite «Siri y Dictado».`
-            : 'El servicio de voz del sistema no está disponible. En Android revisa que la app de Google esté instalada y actualizada.';
+      this.errorMsg = isIOS && isStandalone
+        ? 'En iPhone la voz no funciona desde el icono de inicio. Abre la web en Safari.'
+        : 'El servicio de voz del sistema no está disponible.';
       return;
     }
     if (err === 'not-allowed') {
@@ -230,36 +322,44 @@ class Recognizer {
   private onResult(e: any) {
     const last = e.results[e.results.length - 1];
     if (last?.isFinal) this.note(`oído: «${(last[0]?.transcript ?? '').trim().slice(0, 30)}»`);
-    if (this.state !== 'listening') this.state = 'listening';
     this.failures = 0;
-    this.target = 1;
     for (let i = e.resultIndex; i < e.results.length; i++) {
       const res = e.results[i];
-      let text: string = res[0]?.transcript ?? '';
-      let cmds = parseCommands(text, this.callsign, this.allowed, this.others);
-      if (res.isFinal && cmds.length === 0) {
-        for (let a = 1; a < res.length; a++) {
-          const alt = parseCommands(res[a].transcript, this.callsign, this.allowed, this.others);
-          if (alt.length) {
-            cmds = alt;
-            text = res[a].transcript;
-            break;
-          }
+      const alts: string[] = [];
+      for (let a = 0; a < res.length; a++) alts.push(res[a].transcript);
+      this.handleText(res[0]?.transcript ?? '', res.isFinal, i, alts);
+    }
+  }
+
+  /** Procesa una transcripción (parcial o final) de cualquiera de los dos motores. */
+  private handleText(raw: string, isFinal: boolean, idx: number, alts: string[] = []) {
+    if (this.state !== 'listening') this.state = 'listening';
+    this.target = Math.max(this.target, 0.8);
+    let text = raw;
+    let cmds = parseCommands(text, this.callsign, this.allowed, this.others);
+    if (isFinal && cmds.length === 0) {
+      for (const alt of alts.slice(1)) {
+        const c = parseCommands(alt, this.callsign, this.allowed, this.others);
+        if (c.length) {
+          cmds = c;
+          text = alt;
+          break;
         }
       }
-      const already = this.consumed.get(i) ?? 0;
-      const fresh = cmds.slice(already);
-      this.consumed.set(i, Math.max(already, cmds.length));
-      if (text.trim()) this.heard = { text: text.trim(), cmd: null, at: Date.now() };
-      if (res.isFinal && !narratorBusy()) this.onFinal?.(res[0]?.transcript ?? '');
-      if (narratorBusy()) continue; // lo que oiga mientras habla la app se descarta
-      for (const c of fresh) {
-        const last = this.lastCmdAt[c] ?? 0;
-        if (Date.now() - last < 1200) continue;
-        this.lastCmdAt[c] = Date.now();
-        this.heard = { text: text.trim(), cmd: c, at: Date.now() };
-        this.onCommand(c);
-      }
+    }
+    const already = this.consumed.get(idx) ?? 0;
+    const fresh = cmds.slice(already);
+    this.consumed.set(idx, Math.max(already, cmds.length));
+    if (this.consumed.size > 200) this.consumed.clear();
+    if (text.trim()) this.heard = { text: text.trim(), cmd: null, at: Date.now() };
+    if (isFinal && !narratorBusy()) this.onFinal?.(raw);
+    if (narratorBusy()) return; // lo que oiga mientras habla la app se descarta
+    for (const c of fresh) {
+      const last = this.lastCmdAt[c] ?? 0;
+      if (Date.now() - last < 1200) continue;
+      this.lastCmdAt[c] = Date.now();
+      this.heard = { text: text.trim(), cmd: c, at: Date.now() };
+      this.onCommand(c);
     }
   }
 

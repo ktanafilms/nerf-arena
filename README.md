@@ -45,3 +45,17 @@ Para probar en los móviles sin publicar hace falta HTTPS por el micrófono. Lo 
   - Fuera de casa, si los dos usáis datos móviles y no conectan, que uno comparta internet al otro (punto de acceso).
 - **Voz**: Web Speech API (`src/lib/voice`). Solo cuenta tu nombre (o cómo lo transcribe tu móvil, aprendido en la prueba de voz) seguido de una orden. Lo que se oye mientras habla el narrador se descarta.
 - **Sonidos**: todos sintetizados con Web Audio (`src/lib/audio/sfx.ts`), sin archivos.
+
+## Voz sin Siri: reconocedor propio
+
+Si el reconocimiento de voz del móvil no está disponible (en iPhone pasa si iOS no deja a Safari usarlo: error `service-not-allowed`), la app cambia sola a un **reconocedor propio que funciona dentro del móvil**:
+
+- Motor: [vosk-browser](https://github.com/ccoreilly/vosk-browser) (Apache 2.0).
+- Modelo: `vosk-model-small-es-0.42` de [Vosk / Alpha Cephei](https://alphacephei.com/vosk/models) (Apache 2.0), en `public/models/vosk-es.tar.gz`.
+- Pesa 40 MB y se descarga una sola vez, con barra de progreso. Después funciona sin internet.
+- El motor se puede cambiar a mano en **Probar voz › Motor**.
+
+## Créditos
+
+- Modelo 3D «NERF Retaliator» de ThimovanNimwegen ([Sketchfab](https://sketchfab.com/3d-models/nerf-retaliator-b119e1463d8f4031aaacd69b03ff5976)), CC BY 4.0. Texturas reducidas y convertidas a WebP.
+- Modelo de voz en español de Vosk (Apache 2.0).

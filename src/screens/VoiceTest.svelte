@@ -73,6 +73,11 @@
       <h1 class="display">{voice.state === 'denied' ? 'Micro bloqueado' : 'Voz no disponible'}</h1>
       <p class="body">{voice.errorMsg}</p>
       <button class="btn small" onclick={() => voice.start()}>Reintentar</button>
+    {:else if voice.state === 'loading'}
+      <h1 class="display">Preparando la voz</h1>
+      <p class="body">Descargando el reconocedor propio (solo la primera vez).</p>
+      <div class="dl"><i style="width:{Math.round(voice.progress * 100)}%"></i></div>
+      <p class="pct num">{Math.round(voice.progress * 100)}%</p>
     {:else if ok}
       <h1 class="display good">Te oigo</h1>
       {#if learned}
@@ -93,6 +98,14 @@
   </div>
 
   <div class="foot">
+    {#if speechSupported}
+      <button
+        class="link engine"
+        onclick={() => voice.useEngine(voice.engine === 'web' ? 'vosk' : 'web')}
+      >
+        Motor: {voice.engine === 'web' ? 'el del móvil' : 'propio de la app'} · cambiar
+      </button>
+    {/if}
     <div class="diag">
       <b>{voiceDiagnostics()}</b>
       {#each voice.log as l}<span>{l}</span>{/each}
@@ -161,7 +174,31 @@
   .foot {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
+  }
+  .engine {
+    align-self: flex-start;
+    padding: 0;
+    font-size: 13px;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .dl {
+    height: 10px;
+    background: var(--bg-3);
+    transform: skewX(-20deg);
+    overflow: hidden;
+  }
+  .dl i {
+    display: block;
+    height: 100%;
+    background: var(--me);
+    transition: width 0.2s;
+  }
+  .pct {
+    margin: 0;
+    font-size: 40px;
+    color: var(--me);
   }
   .diag {
     display: flex;

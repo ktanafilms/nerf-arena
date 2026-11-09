@@ -17,7 +17,36 @@
   // Solo en desarrollo: ?demo=lobby|mode|game|result para revisar pantallas
   if (import.meta.env.DEV) {
     const demo = params.get('demo');
-    if (demo && demo !== '1') {
+    if (demo === 'vozfile') {
+      // prueba del reconocimiento con una grabación, sin micro
+      (async () => {
+        const { loadModel } = await import('./lib/voice/vosk-engine');
+        const { parseCommands, ALL_COMMANDS } = await import('./lib/voice/matcher');
+        const model = await loadModel(() => {});
+        const buf = await (await fetch('./__test/voz.wav')).arrayBuffer();
+        const ac = new OfflineAudioContext(1, 48000, 48000);
+        const audio = await ac.decodeAudioData(buf);
+        const rec = new model.KaldiRecognizer(audio.sampleRate);
+        rec.on('result', (m: any) => console.log('FINAL', m.result.text, '→', parseCommands(m.result.text, ['Pablo'], ALL_COMMANDS, [['Marta']]).join(',')));
+        rec.on('partialresult', (m: any) => m.result.partial && console.log('PARCIAL', m.result.partial));
+        const d = audio.getChannelData(0);
+        for (let i = 0; i < d.length; i += 4096) {
+          rec.acceptWaveformFloat(d.slice(i, i + 4096), audio.sampleRate);
+          await new Promise((r) => setTimeout(r, 20));
+        }
+        rec.retrieveFinalResult();
+        console.log('FIN DE PRUEBA');
+      })().catch((e) => console.log('FALLO', e?.message ?? e));
+    } else if (demo === 'voz') {
+      // prueba del motor propio con un micro simulado
+      localStorage.setItem('nerf.voiceEngine', 'vosk');
+      setTimeout(async () => {
+        const { voice } = await import('./lib/voice/recognizer.svelte');
+        voice.useEngine('vosk');
+        app.screen = 'voicetest';
+        setInterval(() => console.log('VOZ', voice.state, 'nivel', voice.level.toFixed(2), JSON.stringify(voice.heard), voice.log.slice(-2).join(' | ')), 3000);
+      }, 300);
+    } else if (demo && demo !== '1') {
       app.solo();
       const s = app.session as any;
       if (demo !== 'lobby') s.send({ t: 'selectMode', mode: 'duelo' });

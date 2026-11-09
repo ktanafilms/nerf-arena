@@ -1,12 +1,15 @@
 // Service worker sencillo: red primero para la página, caché para los recursos.
-const CACHE = 'nerf-arena-v1';
+const CACHE = 'nerf-arena-v2';
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
 
 self.addEventListener('fetch', (e) => {
   const req = e.request;
-  if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
+  const u = new URL(req.url);
+  if (req.method !== 'GET' || u.origin !== location.origin) return;
+  // El modelo de voz (40 MB) lo guarda el propio motor: no duplicarlo aquí
+  if (u.pathname.endsWith('.tar.gz')) return;
   if (req.mode === 'navigate') {
     e.respondWith(
       fetch(req)

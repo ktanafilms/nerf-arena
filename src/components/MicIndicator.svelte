@@ -19,6 +19,8 @@
   </span>
   {#if bad}
     <span class="st">Sin micro</span>
+  {:else if voice.state === 'loading'}
+    <span class="st">Preparando voz {Math.round(voice.progress * 100)}%</span>
   {:else if voice.state === 'tap'}
     <span class="st">Toca para activar el micro</span>
   {:else if !live}
