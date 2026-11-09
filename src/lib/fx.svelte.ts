@@ -1,7 +1,6 @@
 // Traduce los eventos de la partida en efectos: sonido, vibración, narrador y animaciones.
 
 import type { GEvent, Game, Room } from './types';
-import { callsignLabel } from './types';
 import { sfx, vibrate } from './audio/sfx';
 import { say, numberWord, durationWords } from './audio/narrator';
 import { gameTime } from './engine/room';
@@ -84,7 +83,7 @@ class Fx {
   private react(room: Room, g: Game, e: GEvent, me: string) {
     const name = (pid?: string) => {
       const p = room.players.find((x) => x.id === pid);
-      return p ? callsignLabel(p.callsign) : '';
+      return p ? p.name : '';
     };
     const opp = room.players.find((p) => p.id !== me)?.id ?? '';
     switch (e.kind) {
@@ -175,7 +174,7 @@ export const fx = new Fx();
 export function statusPhrase(room: Room, me: string, now: number): string {
   const g = room.game;
   const opp = room.players.find((p) => p.id !== me);
-  const oppName = opp ? callsignLabel(opp.callsign) : 'rival';
+  const oppName = opp ? opp.name : 'rival';
   if (!g) return 'No hay partida en curso.';
   const parts: string[] = [];
   const mine = g.lives[me] ?? 0;
@@ -204,7 +203,7 @@ export function timeline(room: Room): string {
   if (!g) return '';
   const nm = (pid?: string) => {
     const p = room.players.find((x) => x.id === pid);
-    return p ? callsignLabel(p.callsign) : '?';
+    return p ? p.name : '?';
   };
   const ts = (ms: number) => {
     const s = Math.max(0, Math.floor(ms / 1000));

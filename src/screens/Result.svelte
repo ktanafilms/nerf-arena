@@ -1,10 +1,12 @@
 <script lang="ts">
-  import { fly, scale } from 'svelte/transition';
+  import { fly } from 'svelte/transition';
   import { app } from '../lib/app.svelte';
   import { fmtClock, timeline } from '../lib/fx.svelte';
   import { gameTime } from '../lib/engine/room';
-  import { callsignLabel, colorHex } from '../lib/types';
+  import { colorDef } from '../lib/types';
   import { modeInfo } from '../lib/modes';
+  import Avatar from '../components/Avatar.svelte';
+  import ScoreRow from '../components/ScoreRow.svelte';
 
   const s = app.session!;
   const room = $derived(s.room!);
@@ -12,8 +14,8 @@
   const me = $derived(app.me!);
   const opp = $derived(app.opp!);
   const won = $derived(g.winner === me.id);
-  const draw = $derived(!g.winner);
-  const winner = $derived(room.players.find((p) => p.id === g.winner));
+  const winner = $derived(room.players.find((p) => p.id === g.winner) ?? null);
+  const wc = $derived(colorDef(winner?.color ?? 'naranja'));
   const iReady = $derived(!!room.ready[me.id]);
   const oppReady = $derived(!!room.ready[opp.id]);
   const duration = $derived(gameTime(g, g.endedAt ?? s.now()));
@@ -22,182 +24,195 @@
     const text = timeline(room);
     try {
       await navigator.clipboard.writeText(text);
-      app.showToast('Línea de tiempo copiada');
+      app.showToast('Tiempos copiados');
     } catch {
-      // Respaldo: compartir o mostrar
       if (navigator.share) navigator.share({ text }).catch(() => {});
       else app.showToast('No se pudo copiar');
     }
   }
 
   const rows = $derived([
-    { k: 'Aciertos', a: g.stats[me.id]?.hits ?? 0, b: g.stats[opp.id]?.hits ?? 0 },
-    { k: 'Recibidos', a: g.stats[me.id]?.taken ?? 0, b: g.stats[opp.id]?.taken ?? 0 },
-    { k: 'Racha máx.', a: g.stats[me.id]?.bestStreak ?? 0, b: g.stats[opp.id]?.bestStreak ?? 0 },
-    { k: 'Vidas', a: g.lives[me.id] ?? 0, b: g.lives[opp.id] ?? 0 },
+    { k: 'Aciertos', a: g.stats[me.id]?.hits ?? 0, b: g.stats[opp.id]?.hits ?? 0, hi: true },
+    { k: 'Recibidos', a: g.stats[me.id]?.taken ?? 0, b: g.stats[opp.id]?.taken ?? 0, hi: false },
+    { k: 'Mejor racha', a: g.stats[me.id]?.bestStreak ?? 0, b: g.stats[opp.id]?.bestStreak ?? 0, hi: true },
+    { k: 'Vidas', a: g.lives[me.id] ?? 0, b: g.lives[opp.id] ?? 0, hi: true },
   ]);
 </script>
 
-<div class="screen result" style="--w:{winner ? colorHex(winner.color) : 'var(--text)'}">
-  <div class="head">
-    <span class="label">{modeInfo(g.mode).name} // FIN DE PARTIDA</span>
-    <span class="label">{fmtClock(duration)}</span>
-  </div>
-
-  <div class="verdict" in:scale={{ start: 1.6, duration: 450 }}>
-    {draw ? 'EMPATE' : won ? 'VICTORIA' : 'DERROTA'}
-  </div>
-
-  {#if winner}
-    <div class="wcard cut" in:fly={{ y: 40, duration: 450, delay: 200 }}>
-      <div class="mvp">MVP</div>
-      <span class="label">GANADOR</span>
-      <div class="wname">{callsignLabel(winner.callsign)}</div>
-      {#if winner.name}<span class="mono wn">{winner.name}</span>{/if}
+<div class="result">
+  <div class="hero" style="--c:{wc.hex};--i:{wc.ink}">
+    <div class="meta">
+      <span>{modeInfo(g.mode).name}</span>
+      <span class="num">{fmtClock(duration)}</span>
     </div>
-  {/if}
-
-  <div class="stats" in:fly={{ y: 30, duration: 400, delay: 350 }}>
-    <div class="sh">
-      <span></span>
-      <b style="color:var(--me)">{callsignLabel(me.callsign)}</b>
-      <b style="color:var(--opp)">{callsignLabel(opp.callsign)}</b>
-    </div>
-    {#each rows as r}
-      <div class="sr">
-        <span class="label">{r.k}</span>
-        <b class:best={r.a > r.b && r.k !== 'Recibidos'}>{r.a}</b>
-        <b class:best={r.b > r.a && r.k !== 'Recibidos'}>{r.b}</b>
+    <div class="verdict" in:fly={{ y: 60, duration: 500 }}>{!winner ? 'Empate' : won ? 'Victoria' : 'Derrota'}</div>
+    {#if winner}
+      <div class="winner" in:fly={{ x: -60, duration: 450, delay: 150 }}>
+        <Avatar icon={winner.icon} color={winner.color} size={58} />
+        <span class="wname">{winner.name}</span>
+        <span class="mvp">MVP</span>
       </div>
-    {/each}
+    {/if}
   </div>
 
-  <div class="session">
-    <span class="label">SESIÓN</span>
-    <span class="sline">
-      <span style="color:var(--me)">{callsignLabel(me.callsign)}</span>
-      <b>{room.wins[me.id] ?? 0} – {room.wins[opp.id] ?? 0}</b>
-      <span style="color:var(--opp)">{callsignLabel(opp.callsign)}</span>
-    </span>
-  </div>
+  <div class="rest">
+    <div class="stats" in:fly={{ y: 30, duration: 400, delay: 250 }}>
+      <div class="sh">
+        <span></span>
+        <b style="color:{colorDef(me.color).hex}">{me.name}</b>
+        <b style="color:{colorDef(opp.color).hex}">{opp.name}</b>
+      </div>
+      {#each rows as r}
+        {@const best = r.hi ? Math.max(r.a, r.b) : Math.min(r.a, r.b)}
+        <div class="sr">
+          <span class="k">{r.k}</span>
+          <b class="num" class:best={r.a === best && r.a !== r.b}>{r.a}</b>
+          <b class="num" class:best={r.b === best && r.a !== r.b}>{r.b}</b>
+        </div>
+      {/each}
+    </div>
 
-  <div class="grow"></div>
+    <div class="session">
+      <span class="eyebrow">Sesión</span>
+      <ScoreRow player={me} value={room.wins[me.id] ?? 0} />
+      <ScoreRow player={opp} value={room.wins[opp.id] ?? 0} />
+    </div>
 
-  <div class="actions">
-    <button class="btn" class:ghost={iReady} onclick={() => app.ready(!iReady)}>
-      {iReady ? (oppReady ? '¡Vamos!' : 'Esperando revancha…') : oppReady ? '¡Revancha! (te espera)' : 'Revancha'}
-    </button>
-    <div class="two">
-      <button class="btn ghost small" onclick={() => s.send({ t: 'toLobby' })}>Cambiar modo</button>
-      <button class="btn ghost small" onclick={copy}>Copiar tiempos</button>
+    <div class="actions">
+      <button class="btn" class:ghost={iReady} onclick={() => app.ready(!iReady)}>
+        {iReady ? (oppReady ? '¡Vamos!' : 'Esperando al rival…') : oppReady ? 'Revancha · te espera' : 'Revancha'}
+      </button>
+      <div class="two">
+        <button class="btn ghost small" onclick={() => s.send({ t: 'toLobby' })}>Otro modo</button>
+        <button class="btn ghost small" onclick={copy}>Copiar tiempos</button>
+      </div>
     </div>
   </div>
 </div>
 
 <style>
   .result {
-    gap: 14px;
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
   }
-  .head {
+  .hero {
+    background: var(--c);
+    color: var(--i);
+    padding: calc(var(--sat) + 16px) 20px 40px;
+    clip-path: polygon(0 0, 100% 0, 100% 86%, 0 100%);
+  }
+  .meta {
     display: flex;
     justify-content: space-between;
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    opacity: 0.75;
+  }
+  .meta .num {
+    font-size: 20px;
   }
   .verdict {
-    font-size: min(18vh, 23vw, 130px);
-    font-weight: 800;
-    text-align: center;
-    line-height: 0.85;
-    color: var(--w);
-    text-shadow: 0 0 40px var(--w);
-    letter-spacing: 0.04em;
+    font-family: var(--display);
+    font-weight: 900;
+    font-size: min(24vw, 150px);
+    text-transform: uppercase;
+    line-height: 0.8;
+    margin: 14px 0 16px;
+    letter-spacing: -0.01em;
   }
-  .wcard {
-    --cut: 18px;
-    position: relative;
-    background: linear-gradient(135deg, color-mix(in srgb, var(--w) 30%, transparent), var(--panel));
-    border: 1px solid var(--w);
-    padding: 14px 18px;
+  .winner {
     display: flex;
-    flex-direction: column;
+    align-items: center;
+    gap: 12px;
   }
-  .mvp {
-    position: absolute;
-    right: 14px;
-    top: 14px;
-    background: var(--w);
-    color: var(--bg);
-    font-weight: 800;
-    font-size: 22px;
-    padding: 2px 10px;
-    clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+  .winner :global(.av) {
+    background: var(--i) !important;
+  }
+  .winner :global(.av svg) {
+    fill: var(--c) !important;
   }
   .wname {
-    font-size: 64px;
-    font-weight: 800;
+    font-family: var(--display);
+    font-weight: 900;
+    font-size: 48px;
     text-transform: uppercase;
-    line-height: 0.95;
+    line-height: 1;
   }
-  .wn {
-    font-size: 12px;
-    color: var(--dim);
+  .mvp {
+    margin-left: auto;
+    background: var(--i);
+    color: var(--c);
+    font-family: var(--display);
+    font-weight: 900;
+    font-size: 24px;
+    padding: 2px 12px;
+    transform: skewX(-12deg);
   }
-  .stats {
+  .rest {
+    flex: 1;
     display: flex;
     flex-direction: column;
+    gap: 20px;
+    padding: 4px 20px calc(var(--sab) + 20px);
   }
   .sh,
   .sr {
     display: grid;
-    grid-template-columns: 1.4fr 1fr 1fr;
+    grid-template-columns: 1.3fr 1fr 1fr;
     align-items: center;
     text-align: center;
-    padding: 6px 0;
+  }
+  .sh {
+    padding-bottom: 6px;
   }
   .sh b {
-    font-size: 20px;
+    font-family: var(--display);
+    font-weight: 900;
+    font-size: 22px;
     text-transform: uppercase;
   }
   .sr {
-    border-top: 1px solid var(--line);
+    border-top: 1px solid var(--rule);
+    padding: 2px 0;
   }
-  .sr .label {
+  .k {
     text-align: left;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--mute);
   }
   .sr b {
-    font-size: 34px;
-    font-variant-numeric: tabular-nums;
-    color: var(--dim);
+    font-size: 40px;
+    color: var(--mute);
+    opacity: 0.6;
   }
   .sr b.best {
-    color: var(--text);
+    color: var(--paper);
+    opacity: 1;
   }
   .session {
     display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-  }
-  .sline {
-    display: flex;
-    gap: 10px;
-    align-items: baseline;
-    font-size: 22px;
-    font-weight: 800;
-    text-transform: uppercase;
-  }
-  .sline b {
-    font-size: 30px;
-  }
-  .grow {
-    flex: 1;
+    flex-direction: column;
+    gap: 6px;
   }
   .actions {
+    margin-top: auto;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
   }
   .two {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 10px;
+    gap: 8px;
+  }
+  .two .btn {
+    font-size: 20px;
+    padding: 0 8px;
+    white-space: nowrap;
   }
 </style>

@@ -1,7 +1,5 @@
 // Interpreta transcripciones: "[indicativo] [orden]". Tolerante a errores pero estricto en el orden.
 
-import { CALLSIGNS } from '../types';
-
 export type Command = 'tocado' | 'estado' | 'pausa' | 'seguir' | 'anular' | 'mia';
 
 const COMMANDS: Record<Command, string[]> = {
@@ -51,18 +49,21 @@ function wordMatch(word: string, target: string): boolean {
   return false;
 }
 
-function callsignWords(id: string): string[][] {
-  const def = CALLSIGNS.find((c) => c.id === id);
-  if (!def) return [];
-  return [normalize(def.label), ...def.aliases.map(normalize)].map((s) => s.split(' '));
+/** Un indicativo = el nombre del jugador y las variantes aprendidas. */
+export type Callsign = string[];
+
+function callsignWords(cs: Callsign): string[][] {
+  return cs.map(normalize).filter(Boolean).map((s) => s.split(' '));
 }
 
 /** Longitud del indicativo que empieza en tokens[i], o 0 si no coincide. */
-function matchCallsign(tokens: string[], i: number, id: string, others: string[]): number {
-  for (const words of callsignWords(id)) {
+function matchCallsign(tokens: string[], i: number, me: Callsign, others: Callsign[]): number {
+  for (const words of callsignWords(me)) {
     if (words.every((w, k) => tokens[i + k] !== undefined && wordMatch(tokens[i + k], w))) {
-      // Si la palabra encaja exactamente con el indicativo de otro, no es nuestra
-      const exactOther = others.some((o) => callsignWords(o).some((ow) => ow.join(' ') === tokens.slice(i, i + ow.length).join(' ')));
+      // Si la palabra es exactamente el nombre del rival, no es nuestra
+      const exactOther = others.some((o) =>
+        callsignWords(o).some((ow) => ow.join(' ') === tokens.slice(i, i + ow.length).join(' ')),
+      );
       if (exactOther) return 0;
       return words.length;
     }
@@ -89,14 +90,14 @@ function matchCommand(tokens: string[], i: number, allowed: Command[]): { cmd: C
 }
 
 /**
- * Devuelve las órdenes dirigidas a `myCallsign` en el orden en que aparecen.
- * Ejemplo: "lobo tocado" → ['tocado'];  "cobra tocado" → [] si yo soy Lobo.
+ * Devuelve las órdenes dirigidas a mí en el orden en que aparecen.
+ * Ejemplo: "pablo tocado" → ['tocado'];  "ana tocado" → [] si yo soy Pablo.
  */
-export function parseCommands(text: string, myCallsign: string, allowed: Command[], otherCallsigns: string[] = []): Command[] {
+export function parseCommands(text: string, me: Callsign, allowed: Command[], others: Callsign[] = []): Command[] {
   const tokens = normalize(text).split(' ').filter(Boolean);
   const out: Command[] = [];
   for (let i = 0; i < tokens.length; i++) {
-    const cl = matchCallsign(tokens, i, myCallsign, otherCallsigns);
+    const cl = matchCallsign(tokens, i, me, others);
     if (!cl) continue;
     let j = i + cl;
     if (tokens[j] && FILLERS.has(tokens[j]) && !matchCommand(tokens, j, allowed)) j++;
@@ -110,3 +111,24 @@ export function parseCommands(text: string, myCallsign: string, allowed: Command
 }
 
 export const ALL_COMMANDS: Command[] = ['tocado', 'estado', 'pausa', 'seguir', 'anular'];
+
+/** Palabras sueltas de las órdenes (para que ningún nombre se les parezca). */
+export const COMMAND_WORDS = Array.from(
+  new Set(Object.values(COMMANDS).flat().filter((p) => !p.includes(' ') && p.length >= 4)),
+);
+
+/**
+ * Calibración: si se oye "<algo> estado", devuelve <algo> (cómo transcribe
+ * el móvil el nombre del jugador). Devuelve null si no hay patrón claro.
+ */
+export function learnAlias(text: string): string | null {
+  const tokens = normalize(text).split(' ').filter(Boolean);
+  for (let i = 1; i < tokens.length; i++) {
+    if (!wordMatch(tokens[i], 'estado')) continue;
+    let j = i - 1;
+    if (FILLERS.has(tokens[j]) && j > 0) j--;
+    const w = tokens[j];
+    if (w && w.length >= 2 && !FILLERS.has(w)) return w;
+  }
+  return null;
+}

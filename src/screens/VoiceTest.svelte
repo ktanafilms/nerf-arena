@@ -1,138 +1,144 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte';
   import { app } from '../lib/app.svelte';
   import { voice, speechSupported } from '../lib/voice/recognizer.svelte';
-  import { ALL_COMMANDS } from '../lib/voice/matcher';
-  import { callsignLabel } from '../lib/types';
+  import { ALL_COMMANDS, learnAlias, normalize } from '../lib/voice/matcher';
+  import { callsignOf } from '../lib/types';
   import { sfx, vibrate } from '../lib/audio/sfx';
   import { say } from '../lib/audio/narrator';
   import { isIOS, isStandalone } from '../lib/device';
-  import MicIndicator from '../components/MicIndicator.svelte';
 
-  const cs = app.me?.callsign ?? app.prefs.profile?.callsign ?? 'lobo';
+  const profile = app.prefs.profile!;
+  const name = app.me?.name ?? profile.name;
   let ok = $state(false);
+  let learned = $state<string | null>(null);
 
-  voice.callsign = cs;
-  voice.others = app.opp ? [app.opp.callsign] : [];
-  voice.allowed = ALL_COMMANDS;
+  function setup() {
+    voice.callsign = callsignOf(app.me ?? profile);
+    voice.others = app.opp ? [callsignOf(app.opp)] : [];
+    voice.allowed = ALL_COMMANDS;
+  }
+  setup();
+
+  function success() {
+    if (ok) return;
+    ok = true;
+    sfx.confirm();
+    vibrate(60);
+    say('Te recibo alto y claro.');
+    setTimeout(() => app.voiceTestDone(true), learned ? 3200 : 1800);
+  }
+
   voice.onCommand = (c) => {
-    if (c === 'estado' && !ok) {
-      ok = true;
-      sfx.confirm();
-      vibrate(60);
-      say('Te recibo alto y claro.');
-      setTimeout(() => app.voiceTestDone(true), 1800);
-    }
+    if (c === 'estado') success();
   };
+
+  // Calibración: si el móvil escribe tu nombre de otra forma, se aprende
+  voice.onFinal = (text) => {
+    if (ok) return;
+    const alias = learnAlias(text);
+    if (!alias || alias === normalize(name)) return;
+    const p = app.prefs.profile!;
+    if (!p.aliases.includes(alias)) p.aliases = [...p.aliases, alias].slice(-4);
+    app.savePrefs();
+    app.session?.send({ t: 'profile', profile: app.profile()! });
+    setup();
+    learned = alias;
+    success();
+  };
+
+  onDestroy(() => {
+    voice.onFinal = null;
+  });
+
   if (voice.state === 'off') voice.start();
 </script>
 
 <div class="screen vt">
   <div class="head">
-    <span class="label">PRUEBA DE VOZ</span>
-    <MicIndicator showText={false} />
+    <span class="eyebrow">Prueba de voz</span>
   </div>
 
   <div class="mid">
-    <div class="ring" class:ok>
-      <svg viewBox="0 0 100 100"><rect x="38" y="16" width="24" height="44" rx="12" /><path d="M26 48c0 14 10 24 24 24s24-10 24-24M50 72v14" /></svg>
-      <span class="pulse" style="transform:scale({1 + voice.level * 0.6})"></span>
+    <div class="meter" class:ok>
+      {#each Array(12) as _, k}
+        <i style="height:{8 + Math.max(0, Math.min(1, voice.level * 1.6 - k / 14)) * 90}px"></i>
+      {/each}
     </div>
+
     {#if !speechSupported}
-      <h1>Este navegador no tiene reconocimiento de voz</h1>
-      <p>Puedes jugar con el plan B táctil: doble toque = tocado, mantener = anular.</p>
+      <h1 class="display">Este navegador no reconoce voz</h1>
+      <p class="body">Puedes jugar igual: doble toque = tocado, mantener pulsado = anular.</p>
     {:else if voice.state === 'denied'}
-      <h1>Micrófono bloqueado</h1>
-      <p>{voice.errorMsg} Revisa los permisos del navegador y vuelve a intentarlo.</p>
+      <h1 class="display">Micrófono bloqueado</h1>
+      <p class="body">{voice.errorMsg} Revisa los permisos del navegador y vuelve a intentarlo.</p>
     {:else if ok}
-      <h1 class="good">¡Te entiendo!</h1>
-    {:else}
-      <span class="label">Di en voz alta</span>
-      <h1 class="say">«{callsignLabel(cs)}, estado»</h1>
-      <div class="heard">
-        {#if voice.heard}«{voice.heard.text}»{:else}Escuchando…{/if}
-      </div>
-      {#if isIOS && isStandalone}
-        <p class="small">En iPhone, si no te oye desde la app instalada, ábrela en Safari.</p>
+      <h1 class="display good">Te oigo</h1>
+      {#if learned}
+        <p class="body">Tu móvil escribe tu nombre como «{learned}». Lo he aprendido para reconocerte mejor.</p>
       {/if}
-      {#if voice.errorMsg}<p class="small warn">{voice.errorMsg}</p>{/if}
+    {:else}
+      <span class="eyebrow">Di en voz alta</span>
+      <h1 class="display say">{name},<br />estado</h1>
+      <p class="heard">
+        {#if voice.heard}«{voice.heard.text}»{:else}Escuchando…{/if}
+      </p>
+      {#if isIOS && isStandalone}
+        <p class="body small">Si en iPhone no te oye desde la app instalada, ábrela en Safari.</p>
+      {/if}
+      {#if voice.errorMsg}<p class="body small warn">{voice.errorMsg}</p>{/if}
     {/if}
   </div>
 
-  <div class="foot">
-    <button class="btn ghost" onclick={() => app.voiceTestDone(false)}>
-      {speechSupported && voice.state !== 'denied' ? 'Saltar' : 'Continuar sin voz'}
-    </button>
-  </div>
+  <button class="btn ghost" onclick={() => app.voiceTestDone(false)}>
+    {speechSupported && voice.state !== 'denied' ? 'Saltar' : 'Seguir sin voz'}
+  </button>
 </div>
 
 <style>
   .vt {
     justify-content: space-between;
   }
-  .head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
   .mid {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    text-align: center;
     gap: 14px;
   }
-  .ring {
-    position: relative;
-    width: 150px;
-    height: 150px;
-    display: grid;
-    place-items: center;
+  .meter {
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+    height: 100px;
+    margin-bottom: 10px;
   }
-  .ring svg {
-    width: 90px;
-    fill: none;
-    stroke: var(--me);
-    stroke-width: 4;
-    z-index: 1;
+  .meter i {
+    width: 14px;
+    background: var(--me);
+    transform: skewX(-12deg);
+    transition: height 0.08s linear;
   }
-  .pulse {
-    position: absolute;
-    inset: 0;
-    border: 2px solid var(--me);
-    border-radius: 50%;
-    box-shadow: 0 0 30px color-mix(in srgb, var(--me) 50%, transparent);
-    transition: transform 0.08s;
-  }
-  .ring.ok .pulse {
-    border-color: var(--ok);
-    background: color-mix(in srgb, var(--ok) 15%, transparent);
+  .meter.ok i {
+    background: var(--ok);
   }
   h1 {
-    font-size: 40px;
+    font-size: 64px;
   }
   .say {
-    font-size: 56px;
+    font-size: 96px;
     color: var(--me);
   }
   .good {
     color: var(--ok);
-    font-size: 64px;
+    font-size: 110px;
   }
   .heard {
-    font-family: var(--mono);
-    font-size: 14px;
-    color: var(--dim);
-    min-height: 20px;
-  }
-  p {
-    font-family: var(--mono);
-    font-size: 13px;
-    color: var(--dim);
-    max-width: 320px;
-    line-height: 1.5;
+    margin: 0;
+    font-size: 16px;
+    color: var(--mute);
+    min-height: 22px;
   }
   .small {
-    font-size: 11px;
+    font-size: 13px;
   }
   .warn {
     color: var(--warn);

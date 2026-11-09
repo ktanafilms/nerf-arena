@@ -18,15 +18,15 @@
 
 <div class="screen join">
   <div class="head">
-    <span class="label">ENLACE // UNIRSE A SALA</span>
+    <span class="eyebrow">Unirse</span>
     <button class="link" onclick={() => (app.screen = 'home')}>Volver</button>
   </div>
 
-  <div class="mid">
-    <h1>Código de sala</h1>
+  <div class="mid stagger">
+    <h1 class="display">Código<br />de sala</h1>
     <label class="boxes" for="code">
       {#each [0, 1, 2, 3] as i}
-        <span class="box cut" class:filled={code[i]} class:cursor={code.length === i}>{code[i] ?? ''}</span>
+        <span class="box" class:filled={code[i]} class:cursor={code.length === i}>{code[i] ?? ''}</span>
       {/each}
     </label>
     <input
@@ -40,10 +40,10 @@
       spellcheck="false"
       maxlength="4"
     />
-    <p class="hint">O escanea el QR de la otra pantalla con la cámara del móvil.</p>
+    <p class="body">O apunta con la cámara del móvil al QR de la otra pantalla.</p>
   </div>
 
-  <button class="btn" disabled={code.length !== 4} onclick={go}>Unirse</button>
+  <button class="btn" disabled={code.length !== 4} onclick={go}>Entrar</button>
 </div>
 
 <style>
@@ -58,31 +58,31 @@
   .mid {
     display: flex;
     flex-direction: column;
-    gap: 20px;
-    align-items: center;
+    gap: 22px;
   }
   h1 {
-    font-size: 40px;
+    font-size: 76px;
   }
   .boxes {
-    display: flex;
-    gap: 10px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
   }
   .box {
-    --cut: 12px;
-    width: 68px;
-    height: 88px;
+    height: 104px;
     display: grid;
     place-items: center;
-    font-size: 64px;
-    font-weight: 800;
-    background: var(--panel);
-    border: 1px solid var(--line2);
+    font-family: var(--display);
+    font-size: 80px;
+    font-weight: 900;
+    background: var(--bg-2);
+    border-radius: 4px;
+    border-bottom: 4px solid var(--bg-3);
   }
   .box.filled {
-    color: var(--me);
-    border-color: var(--me);
-    text-shadow: 0 0 16px var(--me);
+    background: var(--me);
+    color: var(--me-ink);
+    border-color: transparent;
   }
   .box.cursor {
     border-color: var(--me);
@@ -94,12 +94,5 @@
     width: 1px;
     height: 1px;
     pointer-events: none;
-  }
-  .hint {
-    font-family: var(--mono);
-    font-size: 12px;
-    color: var(--dim);
-    text-align: center;
-    max-width: 280px;
   }
 </style>

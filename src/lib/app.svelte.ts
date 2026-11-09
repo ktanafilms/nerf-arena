@@ -1,7 +1,8 @@
 // Estado global de la app: preferencias guardadas, navegación y sesión activa.
 
 import type { Profile, Room } from './types';
-import { CALLSIGNS, COLORS, callsignLabel } from './types';
+import { COLORS } from './types';
+import { ICONS } from './icons';
 import { GuestSession, HostSession, SoloSession, randomCode, type Session } from './net/session.svelte';
 import { unlockAudio } from './audio/sfx';
 import { unlockSpeech } from './audio/narrator';
@@ -21,7 +22,14 @@ const PREFS_KEY = 'nerf.prefs';
 function loadPrefs(): Prefs {
   const def: Prefs = { profile: null, seenGuide: false, voiceTested: false, seenTip: false, recording: false };
   try {
-    return { ...def, ...JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') };
+    const p: Prefs = { ...def, ...JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') };
+    // Perfiles antiguos (con indicativo de lista): pedir nombre e icono de nuevo
+    if (p.profile && (!p.profile.icon || !p.profile.name || !COLORS.some((c) => c.id === p.profile!.color))) {
+      p.profile = null;
+      p.voiceTested = false;
+    }
+    if (p.profile && !p.profile.aliases) p.profile.aliases = [];
+    return p;
   } catch {
     return def;
   }
@@ -50,6 +58,11 @@ class App {
     this.toast = msg;
     if (this.toastTimer) clearTimeout(this.toastTimer);
     this.toastTimer = setTimeout(() => (this.toast = null), ms);
+  }
+
+  /** Copia plana del perfil (los proxies reactivos no se pueden clonar ni enviar) */
+  profile(): Profile | null {
+    return this.prefs.profile ? ($state.snapshot(this.prefs.profile) as Profile) : null;
   }
 
   get room(): Room | null {
@@ -81,7 +94,7 @@ class App {
     this.unlock();
     if (!this.prefs.profile) return this.needProfile({ kind: 'create' });
     const saved = HostSession.savedRoom();
-    const s = new HostSession(saved?.code ?? randomCode(), this.prefs.profile, saved ?? undefined);
+    const s = new HostSession(saved?.code ?? randomCode(), this.profile()!, saved ?? undefined);
     this.startSession(s);
   }
 
@@ -96,16 +109,17 @@ class App {
   join(code: string) {
     this.unlock();
     if (!this.prefs.profile) return this.needProfile({ kind: 'join', code });
-    this.startSession(new GuestSession(code, this.prefs.profile));
+    this.startSession(new GuestSession(code, this.profile()!));
   }
 
   solo() {
     this.unlock();
     if (!this.prefs.profile) return this.needProfile({ kind: 'solo' });
-    const me = this.prefs.profile;
+    const me = this.profile()!;
     const color = COLORS.find((c) => c.id !== me.color)!.id;
-    const callsign = CALLSIGNS.find((c) => c.id !== me.callsign)!.id;
-    this.startSession(new SoloSession(me, { name: 'Bot', color, callsign }));
+    const icon = ICONS.find((i) => i.id !== me.icon)!.id;
+    const name = me.name.toLowerCase() === 'rival' ? 'Bot' : 'Rival';
+    this.startSession(new SoloSession(me, { name, color, icon, aliases: [] }));
   }
 
   private startSession(s: HostSession | GuestSession) {
@@ -119,7 +133,7 @@ class App {
   profileDone(p: Profile) {
     this.prefs.profile = p;
     this.savePrefs();
-    if (this.session) this.session.send({ t: 'profile', profile: p });
+    if (this.session) this.session.send({ t: 'profile', profile: this.profile()! });
     const a = this.after;
     this.after = null;
     if (!a || a.kind === 'back') this.screen = this.session ? 'room' : 'home';
@@ -167,7 +181,7 @@ class App {
 
   label(pid: string | undefined | null) {
     const p = this.room?.players.find((x) => x.id === pid);
-    return p ? callsignLabel(p.callsign) : '—';
+    return p ? p.name : '—';
   }
 }
 

@@ -4,6 +4,7 @@
   import { voice } from '../lib/voice/recognizer.svelte';
   import { ALL_COMMANDS, type Command } from '../lib/voice/matcher';
   import { say } from '../lib/audio/narrator';
+  import { callsignOf } from '../lib/types';
   import Lobby from './Lobby.svelte';
   import ModeScreen from './ModeScreen.svelte';
   import Game from './Game.svelte';
@@ -18,8 +19,8 @@
 
   // Configurar la voz con mi indicativo
   $effect(() => {
-    voice.callsign = app.me?.callsign ?? '';
-    voice.others = app.opp ? [app.opp.callsign] : [];
+    voice.callsign = callsignOf(app.me);
+    voice.others = app.opp ? [callsignOf(app.opp)] : [];
     voice.allowed = ALL_COMMANDS;
   });
 
@@ -55,16 +56,15 @@
 
 {#if s.status === 'error'}
   <div class="screen center">
-    <span class="label">ERROR DE ENLACE</span>
-    <h1>{s.error}</h1>
+    <span class="eyebrow">No se pudo conectar</span>
+    <h1 class="display">{s.error}</h1>
     <button class="btn" onclick={() => app.leave()}>Volver al inicio</button>
   </div>
 {:else if !room}
   <div class="screen center">
-    <span class="label">ENLAZANDO…</span>
     <div class="spinner"></div>
-    <h1>Conectando con la sala</h1>
-    {#if s.error}<p class="mono err">{s.error}</p>{/if}
+    <h1 class="display">Entrando en la sala</h1>
+    {#if s.error}<p class="err">{s.error}</p>{/if}
     <button class="link" onclick={() => app.leave()}>Cancelar</button>
   </div>
 {:else if room.screen === 'game' && room.game}
@@ -78,7 +78,7 @@
 {#if room && s.kind === 'guest' && s.status !== 'online'}
   <div class="reconnect">
     <div class="spinner"></div>
-    <span>Reconectando con el host…</span>
+    <span>Reconectando…</span>
   </div>
 {/if}
 
@@ -90,7 +90,7 @@
     text-align: center;
   }
   h1 {
-    font-size: 36px;
+    font-size: 48px;
     max-width: 340px;
   }
   .err {
@@ -100,7 +100,7 @@
   .spinner {
     width: 54px;
     height: 54px;
-    border: 3px solid var(--line2);
+    border: 4px solid var(--bg-3);
     border-top-color: var(--me);
     border-radius: 50%;
     animation: spin 0.9s linear infinite;
@@ -120,10 +120,10 @@
     gap: 10px;
     background: var(--warn);
     color: var(--bg);
-    font-family: var(--mono);
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 700;
     padding: 8px 14px;
+    border-radius: 4px;
     z-index: 90;
   }
   .reconnect .spinner {

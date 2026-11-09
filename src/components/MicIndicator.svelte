@@ -1,4 +1,5 @@
 <script lang="ts">
+  // Indicador de micro: barras de nivel y, un instante, lo que ha entendido.
   import { voice } from '../lib/voice/recognizer.svelte';
 
   let { showText = true }: { showText?: boolean } = $props();
@@ -8,26 +9,22 @@
     return () => clearInterval(t);
   });
   const recent = $derived(voice.heard && now - voice.heard.at < 2500 ? voice.heard : null);
-  const bars = [0.15, 0.35, 0.55, 0.75, 0.95];
-  const stateLabel: Record<string, string> = {
-    listening: 'MIC',
-    starting: 'MIC…',
-    off: 'MIC OFF',
-    denied: 'SIN PERMISO',
-    unsupported: 'SIN VOZ',
-    error: 'ERROR',
-  };
+  const live = $derived(voice.state === 'listening');
+  const bad = $derived(voice.state === 'denied' || voice.state === 'unsupported');
 </script>
 
-<div class="mic" class:live={voice.state === 'listening'} class:bad={voice.state === 'denied' || voice.state === 'unsupported'}>
-  <span class="dot"></span>
-  <span class="st">{stateLabel[voice.state]}</span>
+<div class="mic" class:live class:bad>
   <span class="bars">
-    {#each bars as b}<i class:on={voice.level > b * 0.6}></i>{/each}
+    {#each [0, 1, 2, 3] as k}<i style="height:{25 + Math.max(0, Math.min(1, voice.level * 1.8 - k * 0.2)) * 75}%"></i>{/each}
   </span>
+  {#if bad}
+    <span class="st">Sin micro</span>
+  {:else if !live}
+    <span class="st">Micro apagado</span>
+  {/if}
   {#if showText && recent}
     <span class="heard" class:cmd={recent.cmd}>
-      {#if recent.cmd}✓ {recent.cmd.toUpperCase()}{:else}«{recent.text.slice(-28)}»{/if}
+      {#if recent.cmd}✓ {recent.cmd}{:else}{recent.text.slice(-26)}{/if}
     </span>
   {/if}
 </div>
@@ -36,67 +33,42 @@
   .mic {
     display: flex;
     align-items: center;
-    gap: 6px;
-    font-family: var(--mono);
-    font-size: 10px;
-    color: var(--dim);
+    gap: 8px;
     min-width: 0;
-  }
-  .dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--faint);
-    flex: none;
-  }
-  .live .dot {
-    background: var(--ok);
-    box-shadow: 0 0 8px var(--ok);
-    animation: blink 1.6s infinite;
-  }
-  .bad .dot {
-    background: var(--danger);
-  }
-  .bad .st {
-    color: var(--danger);
+    font-size: 12px;
+    font-weight: 600;
   }
   .bars {
     display: flex;
     align-items: flex-end;
     gap: 2px;
-    height: 12px;
+    height: 16px;
   }
   .bars i {
-    width: 3px;
-    background: var(--faint);
+    width: 4px;
+    background: currentColor;
+    opacity: 0.35;
+    transition: height 0.08s linear;
   }
-  .bars i:nth-child(1) {
-    height: 30%;
+  .live .bars i {
+    opacity: 1;
   }
-  .bars i:nth-child(2) {
-    height: 45%;
+  .bad .bars i {
+    height: 25% !important;
   }
-  .bars i:nth-child(3) {
-    height: 60%;
-  }
-  .bars i:nth-child(4) {
-    height: 80%;
-  }
-  .bars i:nth-child(5) {
-    height: 100%;
-  }
-  .bars i.on {
-    background: var(--ok);
+  .st {
+    opacity: 0.7;
   }
   .heard {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    color: var(--text);
-    max-width: 46vw;
+    max-width: 48vw;
+    opacity: 0.75;
   }
   .heard.cmd {
-    color: var(--ok);
-    font-weight: 700;
+    opacity: 1;
+    font-weight: 800;
+    text-transform: uppercase;
   }
 </style>

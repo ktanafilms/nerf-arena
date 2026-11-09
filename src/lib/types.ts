@@ -3,9 +3,10 @@
 export type ModeId = 'duelo' | 'armas' | 'bomba' | 'cazador' | 'buscar' | 'blanco';
 
 export interface Profile {
-  name: string;
+  name: string; // nombre del jugador = indicativo de voz
   color: string; // id de color (ver COLORS)
-  callsign: string; // id de indicativo (ver CALLSIGNS)
+  icon: string; // id de icono (ver ICONS)
+  aliases: string[]; // cómo transcribe el móvil tu nombre (aprendido en la prueba de voz)
 }
 
 export interface Player extends Profile {
@@ -110,35 +111,22 @@ export interface ColorDef {
   id: string;
   name: string;
   hex: string;
+  ink: string; // color de texto legible encima
 }
 
 export const COLORS: ColorDef[] = [
-  { id: 'cian', name: 'Cian', hex: '#2bf0ff' },
-  { id: 'rojo', name: 'Rojo', hex: '#ff3b5c' },
-  { id: 'lima', name: 'Lima', hex: '#a6ff2e' },
-  { id: 'naranja', name: 'Naranja', hex: '#ff9a1f' },
-  { id: 'violeta', name: 'Violeta', hex: '#b46bff' },
-  { id: 'oro', name: 'Oro', hex: '#ffd23f' },
+  { id: 'naranja', name: 'Naranja', hex: '#ff5a1f', ink: '#120a06' },
+  { id: 'azul', name: 'Azul', hex: '#2f6bff', ink: '#ffffff' },
+  { id: 'verde', name: 'Verde', hex: '#1fd27c', ink: '#06140d' },
+  { id: 'rosa', name: 'Rosa', hex: '#ff3d8b', ink: '#16050c' },
+  { id: 'amarillo', name: 'Amarillo', hex: '#ffd60a', ink: '#141100' },
+  { id: 'violeta', name: 'Violeta', hex: '#7b4dff', ink: '#ffffff' },
 ];
 
-export interface CallsignDef {
-  id: string;
-  label: string;
-  aliases: string[]; // transcripciones erróneas habituales
-}
+export const colorDef = (id: string) => COLORS.find((c) => c.id === id) ?? COLORS[0];
+export const colorHex = (id: string) => colorDef(id).hex;
+export const colorInk = (id: string) => colorDef(id).ink;
 
-// Lista revisada: consonante inicial y vocal tónica distintas entre sí,
-// y ninguna se parece a las órdenes (tocado, estado, pausa, seguir, anular, mía).
-export const CALLSIGNS: CallsignDef[] = [
-  { id: 'lobo', label: 'Lobo', aliases: ['lobos', 'globo', 'lo bo'] },
-  { id: 'tigre', label: 'Tigre', aliases: ['tigres', 'tigré'] },
-  { id: 'cobra', label: 'Cobra', aliases: ['cobras', 'kobra', 'cobra.'] },
-  { id: 'rayo', label: 'Rayo', aliases: ['rallo', 'rayos', 'raio'] },
-  { id: 'fenix', label: 'Fénix', aliases: ['felix', 'phoenix', 'fenis', 'fénis'] },
-  { id: 'halcon', label: 'Halcón', aliases: ['alcon', 'halcones', 'falcon'] },
-  { id: 'delta', label: 'Delta', aliases: ['delta.', 'deltas'] },
-  { id: 'puma', label: 'Puma', aliases: ['pumas', 'puma.'] },
-];
-
-export const colorHex = (id: string) => COLORS.find((c) => c.id === id)?.hex ?? '#2bf0ff';
-export const callsignLabel = (id: string) => CALLSIGNS.find((c) => c.id === id)?.label ?? id;
+/** Palabras con las que la voz reconoce a un jugador */
+export const callsignOf = (p: Pick<Profile, 'name' | 'aliases'> | null | undefined): string[] =>
+  p ? [p.name, ...(p.aliases ?? [])].filter(Boolean) : [];

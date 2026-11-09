@@ -1,7 +1,7 @@
 <script lang="ts">
   import { app } from './lib/app.svelte';
   import { normalizeCode } from './lib/net/session.svelte';
-  import { colorHex } from './lib/types';
+  import { colorDef } from './lib/types';
   import Home from './screens/Home.svelte';
   import Guide from './screens/Guide.svelte';
   import ProfileScreen from './screens/Profile.svelte';
@@ -21,12 +21,16 @@
   $effect(() => {
     const me = app.me ?? app.prefs.profile;
     const opp = app.opp;
-    document.documentElement.style.setProperty('--me', colorHex(me?.color ?? 'cian'));
-    document.documentElement.style.setProperty('--opp', colorHex(opp?.color ?? 'rojo'));
+    const m = colorDef(me?.color ?? 'naranja');
+    const o = colorDef(opp?.color ?? 'azul');
+    const st = document.documentElement.style;
+    st.setProperty('--me', m.hex);
+    st.setProperty('--me-ink', m.ink);
+    st.setProperty('--opp', o.hex);
+    st.setProperty('--opp-ink', o.ink);
   });
 </script>
 
-<div class="bg-grid"></div>
 
 {#key app.screen}
   <div class="enter" style="position:absolute;inset:0">
@@ -51,6 +55,8 @@
     {/if}
   </div>
 {/key}
+
+<div class="grain"></div>
 
 {#if app.toast}
   <div class="toast">{app.toast}</div>

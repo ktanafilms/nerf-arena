@@ -1,60 +1,93 @@
 <script lang="ts">
   import { app } from '../lib/app.svelte';
-  import { CALLSIGNS, COLORS } from '../lib/types';
+  import { COLORS, colorDef } from '../lib/types';
+  import { ICONS } from '../lib/icons';
+  import { cleanName, nameIssue } from '../lib/names';
   import { sfx } from '../lib/audio/sfx';
+  import Avatar from '../components/Avatar.svelte';
 
   const cur = app.prefs.profile;
-  const opp = app.opp; // si ya estamos en una sala, no se puede repetir
+  const opp = app.opp; // dentro de una sala no se puede repetir color
   let name = $state(cur?.name ?? '');
+  let icon = $state(cur?.icon ?? ICONS[0].id);
   let color = $state(cur?.color && cur.color !== opp?.color ? cur.color : COLORS.find((c) => c.id !== opp?.color)!.id);
-  let callsign = $state(
-    cur?.callsign && cur.callsign !== opp?.callsign ? cur.callsign : CALLSIGNS.find((c) => c.id !== opp?.callsign)!.id,
-  );
+
+  const c = $derived(colorDef(color));
+  const issue = $derived(nameIssue(name, opp?.name));
 
   function save() {
-    app.profileDone({ name: name.trim().slice(0, 14), color, callsign });
+    if (issue?.level === 'error') return;
+    const aliases = cur && cur.name === name ? cur.aliases : []; // si cambias de nombre, se recalibra
+    if (cur && cur.name !== name) app.prefs.voiceTested = false;
+    app.profileDone({ name, color, icon, aliases });
   }
 </script>
 
-<div class="screen profile" style="--me:{COLORS.find((c) => c.id === color)?.hex}">
+<div class="screen profile" style="--me:{c.hex};--me-ink:{c.ink}">
   <div class="head">
-    <span class="label">PERFIL // OPERADOR</span>
+    <span class="eyebrow">Tu perfil</span>
     <button class="link" onclick={() => (app.screen = app.session ? 'room' : 'home')}>Volver</button>
   </div>
 
-  <h1 class="big">{CALLSIGNS.find((c) => c.id === callsign)?.label}</h1>
+  <div class="preview">
+    <Avatar {icon} {color} size={84} />
+    <div class="pname display">{name || 'Tu nombre'}</div>
+  </div>
 
   <section>
-    <div class="label">Indicativo de voz</div>
-    <div class="grid callsigns">
-      {#each CALLSIGNS as c}
-        {@const taken = opp?.callsign === c.id}
+    <label class="eyebrow" for="name">Nombre · es tu palabra para la voz</label>
+    <input
+      id="name"
+      value={name}
+      oninput={(e) => {
+        name = cleanName((e.target as HTMLInputElement).value);
+        (e.target as HTMLInputElement).value = name;
+      }}
+      maxlength="12"
+      placeholder="Pablo"
+      autocomplete="off"
+      autocapitalize="words"
+      spellcheck="false"
+    />
+    {#if issue && name}
+      <p class="issue" class:err={issue.level === 'error'}>{issue.msg}</p>
+    {:else}
+      <p class="hint">Dirás «{name || 'Pablo'}, tocado». Mejor un nombre de 2 o 3 sílabas.</p>
+    {/if}
+  </section>
+
+  <section>
+    <span class="eyebrow">Icono</span>
+    <div class="icons">
+      {#each ICONS as ic}
         <button
-          class="chip cut"
-          class:on={callsign === c.id}
-          disabled={taken}
+          class="ic"
+          class:on={icon === ic.id}
+          aria-label={ic.name}
           onclick={() => {
-            callsign = c.id;
+            icon = ic.id;
             sfx.click();
-          }}>{c.label}{#if taken}<small>RIVAL</small>{/if}</button
+          }}
         >
+          <svg viewBox="0 0 24 24"><path d={ic.d} fill-rule="evenodd" /></svg>
+        </button>
       {/each}
     </div>
   </section>
 
   <section>
-    <div class="label">Color</div>
-    <div class="grid colors">
-      {#each COLORS as c}
-        {@const taken = opp?.color === c.id}
+    <span class="eyebrow">Color</span>
+    <div class="colors">
+      {#each COLORS as col}
+        {@const taken = opp?.color === col.id}
         <button
-          class="swatch cut"
-          class:on={color === c.id}
+          class="sw"
+          class:on={color === col.id}
           disabled={taken}
-          style="--c:{c.hex}"
-          aria-label={c.name}
+          style="--c:{col.hex}"
+          aria-label={col.name}
           onclick={() => {
-            color = c.id;
+            color = col.id;
             sfx.click();
           }}
         ></button>
@@ -62,108 +95,122 @@
     </div>
   </section>
 
-  <section>
-    <label class="label" for="name">Nombre (opcional)</label>
-    <input id="name" class="cut" bind:value={name} maxlength="14" placeholder="Tu nombre" autocomplete="off" />
-  </section>
-
   <div class="grow"></div>
-  <button class="btn" onclick={save}>Continuar</button>
+  <button class="btn" disabled={!name || issue?.level === 'error'} onclick={save}>Guardar</button>
 </div>
 
 <style>
   .profile {
-    gap: 18px;
+    gap: 22px;
   }
   .head {
     display: flex;
     justify-content: space-between;
     align-items: center;
   }
-  .big {
-    font-size: 72px;
+  .preview {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-width: 0;
+  }
+  .pname {
+    font-size: 64px;
     color: var(--me);
-    text-shadow: 0 0 24px color-mix(in srgb, var(--me) 60%, transparent);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   section {
     display: flex;
     flex-direction: column;
     gap: 10px;
   }
-  .grid {
-    display: grid;
-    gap: 8px;
-  }
-  .callsigns {
-    grid-template-columns: repeat(4, 1fr);
-  }
-  .colors {
-    grid-template-columns: repeat(6, 1fr);
-  }
-  .chip {
-    --cut: 8px;
-    appearance: none;
-    border: 1px solid var(--line2);
-    background: var(--panel);
-    color: var(--text);
-    font-family: var(--display);
-    font-weight: 700;
-    font-size: 20px;
-    text-transform: uppercase;
-    height: 52px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    line-height: 1;
-  }
-  .chip small {
-    font-family: var(--mono);
-    font-size: 9px;
-    color: var(--dim);
-  }
-  .chip.on {
-    background: var(--me);
-    color: var(--bg);
-    border-color: var(--me);
-  }
-  .chip:disabled,
-  .swatch:disabled {
-    opacity: 0.25;
-  }
-  .swatch {
-    --cut: 8px;
+  input {
     appearance: none;
     border: none;
-    height: 52px;
-    background: var(--c);
-    opacity: 0.55;
-    transition: transform 0.15s, opacity 0.15s;
-  }
-  .swatch.on {
-    opacity: 1;
-    transform: scale(1.08);
-    box-shadow: 0 0 18px var(--c);
-    outline: 3px solid var(--text);
-    outline-offset: -3px;
-  }
-  input {
-    --cut: 10px;
-    appearance: none;
-    border: 1px solid var(--line2);
-    background: var(--panel);
-    color: var(--text);
+    border-bottom: 3px solid var(--bg-3);
+    background: transparent;
+    color: var(--paper);
     font-family: var(--display);
-    font-weight: 700;
-    font-size: 24px;
-    height: 56px;
-    padding: 0 16px;
+    font-weight: 900;
+    font-size: 44px;
+    text-transform: uppercase;
+    padding: 4px 0 8px;
     outline: none;
+    border-radius: 0;
     user-select: text;
     -webkit-user-select: text;
+    transition: border-color 0.15s;
+  }
+  input::placeholder {
+    color: var(--bg-3);
   }
   input:focus {
     border-color: var(--me);
+  }
+  .hint,
+  .issue {
+    margin: 0;
+    font-size: 13px;
+    color: var(--mute);
+  }
+  .issue {
+    color: var(--warn);
+  }
+  .issue.err {
+    color: var(--danger);
+  }
+  .icons {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+  }
+  .ic {
+    appearance: none;
+    border: none;
+    aspect-ratio: 1;
+    background: var(--bg-2);
+    border-radius: 4px;
+    display: grid;
+    place-items: center;
+    transition:
+      background 0.15s,
+      transform 0.1s;
+  }
+  .ic svg {
+    width: 58%;
+    fill: var(--mute);
+  }
+  .ic.on {
+    background: var(--me);
+    transform: scale(1.06);
+  }
+  .ic.on svg {
+    fill: var(--me-ink);
+  }
+  .colors {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+  }
+  .sw {
+    appearance: none;
+    border: none;
+    height: 48px;
+    background: var(--c);
+    border-radius: 4px;
+    transition: transform 0.12s;
+    position: relative;
+  }
+  .sw.on {
+    transform: scale(1.08);
+    box-shadow:
+      0 0 0 3px var(--bg),
+      0 0 0 5px var(--paper);
+  }
+  .sw:disabled {
+    opacity: 0.15;
   }
   .grow {
     flex: 1;

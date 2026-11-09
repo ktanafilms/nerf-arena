@@ -14,6 +14,6 @@
 </script>
 
 <svg width={size} height={size} viewBox="-2 -2 {svg.n + 4} {svg.n + 4}" shape-rendering="crispEdges">
-  <rect x="-2" y="-2" width={svg.n + 4} height={svg.n + 4} fill="#e8f1f7" />
-  <path d={svg.d} fill="#06080b" />
+  <rect x="-2" y="-2" width={svg.n + 4} height={svg.n + 4} fill="#f4f1ea" />
+  <path d={svg.d} fill="#121212" />
 </svg>

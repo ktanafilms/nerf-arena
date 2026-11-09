@@ -1,37 +1,39 @@
 <script lang="ts">
   import { app } from '../lib/app.svelte';
   import { HostSession } from '../lib/net/session.svelte';
-  import Logo from '../components/Logo.svelte';
-  import { callsignLabel } from '../lib/types';
+  import Wordmark from '../components/Wordmark.svelte';
+  import Avatar from '../components/Avatar.svelte';
 
   const saved = HostSession.savedRoom();
   const p = app.prefs.profile;
 </script>
 
 <div class="screen home">
-  <div class="top">
-    <span class="label">SYS // ÁRBITRO TÁCTICO v0.1</span>
+  <div class="slab">
+    <div class="slabin"><Wordmark size={1.25} /></div>
+  </div>
+
+  <div class="top"></div>
+
+  <div class="bottom stagger">
     {#if p}
-      <button class="link who" onclick={() => app.editProfile()}>
-        <span class="dot"></span>{callsignLabel(p.callsign)}{p.name ? ` · ${p.name}` : ''}
+      <button class="me" onclick={() => app.editProfile()}>
+        <Avatar icon={p.icon} color={p.color} size={52} />
+        <span class="who">
+          <span class="eyebrow">Jugador</span>
+          <span class="nm">{p.name}</span>
+        </span>
+        <span class="edit">Editar</span>
       </button>
     {/if}
-  </div>
-
-  <div class="hero">
-    <Logo size={1.5} />
-    <p class="tag">2 jugadores · 16 dardos · 0 excusas</p>
-  </div>
-
-  <div class="actions">
     {#if saved}
-      <button class="btn ghost" onclick={() => app.create()}>Volver a la sala {saved.code}</button>
+      <button class="btn ghost small" onclick={() => app.create()}>Volver a la sala {saved.code}</button>
     {/if}
     <button class="btn" onclick={() => (saved ? app.createFresh() : app.create())}>Crear partida</button>
     <button class="btn ghost" onclick={() => (app.screen = 'join')}>Unirse</button>
-    <div class="row">
-      <button class="link" onclick={() => app.solo()}>▸ Probar en un solo móvil</button>
-      <button class="link" onclick={() => (app.screen = 'guide')}>? Guía</button>
+    <div class="links">
+      <button class="link" onclick={() => app.solo()}>Probar con un rival simulado</button>
+      <button class="link" onclick={() => (app.screen = 'guide')}>Cómo se juega</button>
     </div>
   </div>
 </div>
@@ -39,51 +41,83 @@
 <style>
   .home {
     justify-content: space-between;
+    overflow: hidden;
+  }
+  /* Bloque de color diagonal que atraviesa la pantalla */
+  .slab {
+    position: absolute;
+    left: -30%;
+    right: -30%;
+    top: 16%;
+    height: 290px;
+    background: var(--me);
+    color: var(--me-ink);
+    transform: rotate(-9deg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: slab-in 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  .slabin {
+    animation: screen-in 0.5s 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  .slabin :global(.l2) {
+    color: var(--me-ink);
+  }
+  .slabin :global(.l2 i) {
+    background: var(--me-ink);
+  }
+  @keyframes slab-in {
+    from {
+      transform: rotate(-9deg) translateX(-100%);
+    }
+  }
+  .top,
+  .bottom {
+    position: relative;
   }
   .top {
+    padding-top: 8px;
+  }
+  .bottom {
     display: flex;
-    justify-content: space-between;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+    max-width: 460px;
+    margin: 0 auto;
+  }
+  .me {
+    appearance: none;
+    border: none;
+    background: var(--bg-2);
+    color: var(--paper);
+    display: flex;
     align-items: center;
+    gap: 14px;
+    padding: 10px 14px 10px 10px;
+    border-radius: 4px;
+    margin-bottom: 6px;
+    text-align: left;
   }
   .who {
     display: flex;
-    align-items: center;
-    gap: 8px;
-    color: var(--text);
-  }
-  .dot {
-    width: 10px;
-    height: 10px;
-    background: var(--me);
-    box-shadow: 0 0 10px var(--me);
-  }
-  .hero {
-    display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 18px;
+    flex: 1;
   }
-  .tag {
-    font-family: var(--mono);
-    font-size: 12px;
-    letter-spacing: 0.2em;
-    color: var(--dim);
-    text-transform: uppercase;
-    margin: 0;
-  }
-  .actions {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    width: 100%;
-    max-width: 480px;
-    margin: 0 auto;
-  }
-  .actions .btn {
-    min-height: 76px;
+  .nm {
+    font-family: var(--display);
+    font-weight: 900;
     font-size: 30px;
+    text-transform: uppercase;
+    line-height: 0.95;
   }
-  .row {
+  .edit {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--mute);
+  }
+  .links {
     display: flex;
     justify-content: space-between;
   }

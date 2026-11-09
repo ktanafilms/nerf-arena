@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Segmentos de vida. El que se pierde estalla en pedazos.
+  // Barras de vida. La que se pierde salta en pedazos.
   let {
     total,
     left,
@@ -8,13 +8,13 @@
     size = 'big',
   }: { total: number; left: number; shatterKey?: number; shatterIndex?: number; size?: 'big' | 'small' } = $props();
 
-  const shards = Array.from({ length: 9 }, (_, i) => ({
-    x: (Math.random() - 0.5) * 220,
-    y: (Math.random() - 0.7) * 200,
-    r: (Math.random() - 0.5) * 540,
-    w: 8 + Math.random() * 18,
-    h: 6 + Math.random() * 16,
-    d: i * 12,
+  const shards = Array.from({ length: 10 }, (_, i) => ({
+    x: (Math.random() - 0.5) * 260,
+    y: (Math.random() - 0.8) * 220,
+    r: (Math.random() - 0.5) * 600,
+    w: 10 + Math.random() * 22,
+    h: 8 + Math.random() * 18,
+    d: i * 10,
   }));
 </script>
 
@@ -37,43 +37,44 @@
 <style>
   .lives {
     display: flex;
-    gap: 8px;
-    justify-content: center;
+    gap: 10px;
   }
   .seg {
     position: relative;
-    width: 64px;
-    height: 22px;
-    background: color-mix(in srgb, var(--c, var(--me)) 12%, transparent);
-    border: 1px solid color-mix(in srgb, var(--c, var(--me)) 30%, transparent);
-    clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
-    transition: background 0.2s;
-  }
-  .small .seg {
-    width: 26px;
-    height: 10px;
-    clip-path: polygon(4px 0, 100% 0, calc(100% - 4px) 100%, 0 100%);
-  }
-  .small {
-    gap: 4px;
-    justify-content: flex-start;
+    width: 70px;
+    height: 20px;
+    background: currentColor;
+    opacity: 0.18;
+    transform: skewX(-18deg);
+    transition: opacity 0.2s;
   }
   .seg.on {
-    background: var(--c, var(--me));
-    box-shadow: 0 0 14px var(--c, var(--me));
+    opacity: 1;
+  }
+  .small {
+    gap: 5px;
+  }
+  .small .seg {
+    width: 22px;
+    height: 9px;
   }
   .shatter {
     position: absolute;
     left: 50%;
     top: 50%;
     pointer-events: none;
+    opacity: 1;
+  }
+  /* el hueco sigue viéndose apagado, pero los pedazos salen a plena opacidad */
+  .seg:has(.shatter):not(.on) {
+    opacity: 1;
+    background: color-mix(in srgb, currentColor 18%, transparent);
   }
   .shatter i {
     position: absolute;
-    background: var(--c, var(--me));
-    box-shadow: 0 0 10px var(--c, var(--me));
-    animation: shard 0.9s cubic-bezier(0.15, 0.7, 0.3, 1) forwards;
-    clip-path: polygon(0 0, 100% 20%, 70% 100%);
+    background: currentColor;
+    animation: shard 0.95s cubic-bezier(0.15, 0.7, 0.3, 1) forwards;
+    clip-path: polygon(0 0, 100% 25%, 65% 100%);
   }
   @keyframes shard {
     from {
@@ -81,7 +82,7 @@
       opacity: 1;
     }
     to {
-      transform: translate(var(--x), calc(var(--y) + 120px)) rotate(var(--r));
+      transform: translate(var(--x), calc(var(--y) + 140px)) rotate(var(--r));
       opacity: 0;
     }
   }

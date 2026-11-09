@@ -5,7 +5,8 @@
   import { gameTime } from '../lib/engine/room';
   import { modeInfo } from '../lib/modes';
   import type { DuelConfig } from '../lib/types';
-  import { callsignLabel, colorHex } from '../lib/types';
+  import { colorDef } from '../lib/types';
+  import Avatar from '../components/Avatar.svelte';
   import type { Command } from '../lib/voice/matcher';
   import { sfx, vibrate } from '../lib/audio/sfx';
   import { say } from '../lib/audio/narrator';
@@ -41,7 +42,7 @@
   const gt = $derived(gameTime(g, now));
   const remaining = $derived(cfg.timeLimitSec > 0 ? Math.max(0, cfg.timeLimitSec * 1000 - gt) : null);
   const cd = $derived(g.phase === 'countdown' ? Math.ceil((g.startAt - now) / 1000) : 0);
-  const showGo = $derived(now >= g.startAt && now - g.startAt < 900 && g.events.length <= 2);
+  const showGo = $derived(now >= g.startAt && now - g.startAt < 900);
   const resumeN = $derived(g.phase === 'resuming' && g.resumeAt ? Math.max(1, Math.ceil((g.resumeAt - now) / 1000)) : 0);
   const confirmLeft = $derived(g.phase === 'finalizing' && g.finalizeAt ? Math.max(0, g.finalizeAt - now) : 0);
   const playing = $derived(g.phase === 'playing');
@@ -143,6 +144,9 @@
 
   const bot = s instanceof SoloSession ? s : null;
   const info = $derived(modeInfo(g.mode));
+  const mc = $derived(colorDef(me.color));
+  const oc = $derived(colorDef(opp.color));
+  const pcolor = (pid: string) => colorDef(room.players.find((p) => p.id === pid)?.color ?? '');
 </script>
 
 {#if g.phase === 'ended'}
@@ -151,7 +155,7 @@
   <div
     class="game"
     class:critical
-    style="--me:{colorHex(me.color)};--opp:{colorHex(opp.color)}"
+    style="--me:{mc.hex};--me-ink:{mc.ink};--opp:{oc.hex};--opp-ink:{oc.ink}"
     onpointerdown={down}
     onpointerup={up}
     onpointercancel={cancel}
@@ -159,89 +163,92 @@
     role="application"
   >
     <div class="hud" bind:this={hud}>
-      <!-- Barra superior -->
-      <div class="topbar">
-        <div class="tl">
-          <span class="tag">{info.name}</span>
-          <span class="clock mono">⏺ {fmtClock(realClock, true)}</span>
-        </div>
-        <MicIndicator />
-      </div>
-
-      <!-- Rival -->
-      <div class="opp cut" style="--c:var(--opp)">
-        <div class="ol">
-          <span class="label">RIVAL</span>
-          <span class="ocs">{callsignLabel(opp.callsign)}</span>
+      <!-- Rival: franja superior en su color -->
+      <div class="oppband">
+        <div class="obl">
+          <div class="oname">
+            <Avatar icon={opp.icon} color={opp.color} size={34} />
+            <span>{opp.name}</span>
+          </div>
           <Lives total={cfg.lives} left={oppLives} size="small" />
         </div>
-        <div class="onum">{oppLives}</div>
-        {#if !opp.connected}<div class="nosig">SIN SEÑAL</div>{/if}
+        <div class="onum num">{oppLives}</div>
+        {#if !opp.connected}<div class="nosig">Sin conexión</div>{/if}
+      </div>
+
+      <!-- Datos -->
+      <div class="meta">
+        <span class="rec num">● {fmtClock(realClock, true)}</span>
+        <MicIndicator />
       </div>
 
       <!-- Tiempo -->
       <div class="timer" class:low={lowTime}>
         {#if g.suddenDeath}
-          <span class="sd">MUERTE SÚBITA</span>
+          <span class="sd">Muerte súbita</span>
         {:else if remaining !== null}
-          <span class="label">TIEMPO</span>
-          <span class="tval">{fmtClock(remaining)}</span>
+          <span class="tval num">{fmtClock(remaining)}</span>
         {:else}
-          <span class="label">SIN LÍMITE</span>
-          <span class="tval dimv">{fmtClock(gt)}</span>
+          <span class="tval num dimv">{fmtClock(gt)}</span>
         {/if}
       </div>
 
-      <!-- Mis vidas -->
-      <div class="mine" style="--c:var(--me)">
-        <span class="label">{callsignLabel(me.callsign)} // VIDAS</span>
+      <!-- Dorsal: mis vidas -->
+      <div class="dorsal">
         {#key myLives}
-          <div class="mnum" in:scale={{ start: 1.4, duration: 300 }}>{myLives}</div>
+          <div class="mnum num" in:scale={{ start: 1.35, duration: 320 }}>{myLives}</div>
         {/key}
         <Lives total={cfg.lives} left={myLives} shatterKey={fx.hurtKey} shatterIndex={fx.shatterIndex} />
-        {#if cfg.oneInChamber}<span class="variant">UNA EN LA RECÁMARA</span>{/if}
-        {#if cfg.confirmedKill}<span class="variant">BAJA CONFIRMADA</span>{/if}
       </div>
 
-      <!-- Pie -->
+      <div class="mine">
+        <span class="myname">{me.name}</span>
+        {#if cfg.oneInChamber}<span class="variant">Una en la recámara</span>{/if}
+        {#if cfg.confirmedKill}<span class="variant">Baja confirmada</span>{/if}
+      </div>
+
       {#if bot}
         <div class="botpanel nogesture">
-          <span class="label">BOT ({callsignLabel(opp.callsign)})</span>
+          <span>Rival simulado</span>
           <button onclick={() => bot.bot({ t: 'hit' })}>Le doy</button>
           <button onclick={() => bot.bot({ t: 'undo' })}>Anula</button>
           <button onclick={() => bot.bot({ t: 'pause' })}>Pausa</button>
           <button onclick={() => bot.bot({ t: 'resume' })}>Sigue</button>
         </div>
       {/if}
+
       <div class="foot">
-        <div class="hint mono">2 TOQUES = TOCADO · MANTENER = ANULAR</div>
+        {#if fx.feed.length}
+          <div class="feed">
+            {#each fx.feed as f (f.id)}
+              {@const a = pcolor(f.shooter)}
+              {@const b = pcolor(f.victim)}
+              <div class="kf" class:undone={f.undone} in:fly={{ x: -140, duration: 260 }} out:fade={{ duration: 200 }}>
+                <span style="background:{a.hex};color:{a.ink}">{app.label(f.shooter)}</span>
+                <svg viewBox="0 0 24 24"><path d="M4 12h12M12 6l6 6-6 6" /></svg>
+                <span style="background:{b.hex};color:{b.ink}">{app.label(f.victim)}</span>
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <div class="hint">Doble toque: tocado<br />Mantener: anular</div>
+        {/if}
         <button class="pausebtn" onclick={() => onCommand('pausa')} aria-label="Pausa">
           <svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" /><rect x="14" y="5" width="4" height="14" /></svg>
         </button>
       </div>
     </div>
 
-    <!-- Killfeed -->
-    <div class="feed">
-      {#each fx.feed as f (f.id)}
-        <div class="kf" class:undone={f.undone} in:fly={{ x: 120, duration: 260 }} out:fade>
-          <b style="color:{colorHex(room.players.find((p) => p.id === f.shooter)?.color ?? '')}">{app.label(f.shooter)}</b>
-          <span class="arrow">▸</span>
-          <b style="color:{colorHex(room.players.find((p) => p.id === f.victim)?.color ?? '')}">{app.label(f.victim)}</b>
-        </div>
-      {/each}
-    </div>
-
     <!-- Efectos -->
-    {#if critical}<div class="vignette"></div><div class="noise"></div>{/if}
+    {#if critical}<div class="vignette"></div>{/if}
     {#key fx.hurtKey}{#if fx.hurtKey}<div class="hurtflash"></div>{/if}{/key}
     {#key fx.flashKey}{#if fx.flashKey}<div class="confirmflash"></div>{/if}{/key}
     {#key fx.goKey}{#if fx.goKey}<div class="goflash"></div>{/if}{/key}
     {#key fx.hitKey}
       {#if fx.hitKey}
         <div class="hitmarker">
-          <svg viewBox="0 0 100 100"><path d="M20 20l22 22M80 20L58 42M20 80l22-22M80 80L58 58" /></svg>
-          <span class="plus">+1</span>
+          <svg viewBox="0 0 100 100"><path d="M18 18l24 24M82 18L58 42M18 82l24-24M82 82L58 58" /></svg>
+          <span class="plus num">+1</span>
         </div>
       {/if}
     {/key}
@@ -251,42 +258,44 @@
 
     {#if fx.banner}
       {#key fx.banner.id}
-        <div class="banner {fx.banner.tone}" in:fly={{ x: -300, duration: 280 }} out:fly={{ x: 300, duration: 220 }}>
+        <div class="banner {fx.banner.tone}" in:fly={{ x: -320, duration: 260 }} out:fly={{ x: 320, duration: 200 }}>
           <div class="btitle">{fx.banner.title}</div>
-          {#if fx.banner.sub}<div class="bsub mono">{fx.banner.sub}</div>{/if}
+          {#if fx.banner.sub}<div class="bsub">{fx.banner.sub}</div>{/if}
         </div>
       {/key}
     {/if}
 
     <!-- Cuenta atrás de inicio -->
-    {#if g.phase === 'countdown' && cd >= 1 && cd <= 3}
-      <div class="overlay count">
-        {#key cd}<div class="cdn" in:scale={{ start: 2.2, duration: 380 }}>{cd}</div>{/key}
-        <span class="label">PREPARADOS</span>
+    {#if g.phase === 'countdown'}
+      <div class="overlay dark">
+        {#if cd >= 1 && cd <= 3}
+          {#key cd}<div class="cdn num" in:scale={{ start: 1.8, duration: 360 }}>{cd}</div>{/key}
+        {/if}
+        <span class="eyebrow">{cd > 3 ? 'Sincronizando' : 'Preparados'}</span>
       </div>
-    {:else if g.phase === 'countdown'}
-      <div class="overlay count"><span class="label">SINCRONIZANDO…</span></div>
     {/if}
     {#if showGo}
-      <div class="overlay go" out:fade={{ duration: 300 }}><div class="cdn">¡YA!</div></div>
+      <div class="overlay go" out:fade={{ duration: 300 }}><div class="gotext">¡Ya!</div></div>
     {/if}
 
     <!-- Pausa -->
     {#if g.phase === 'paused' || g.phase === 'resuming'}
-      <div class="overlay pause" transition:fade={{ duration: 160 }}>
+      <div class="overlay dark" transition:fade={{ duration: 160 }}>
         {#if g.phase === 'resuming'}
-          {#key resumeN}<div class="cdn" in:scale={{ start: 2, duration: 350 }}>{resumeN}</div>{/key}
-          <span class="label">REANUDANDO</span>
+          {#key resumeN}<div class="cdn num" in:scale={{ start: 1.8, duration: 340 }}>{resumeN}</div>{/key}
+          <span class="eyebrow">Seguimos</span>
         {:else}
-          <div class="ptitle">PAUSA</div>
-          <span class="label">
-            {g.pauseReason === 'desconexión' ? 'CONEXIÓN PERDIDA — ESPERANDO AL RIVAL' : `PAUSADO POR ${app.label([...g.events].reverse().find((e) => e.kind === 'pause')?.by)}`}
-          </span>
+          <div class="ptitle">Pausa</div>
+          <p class="pwho">
+            {g.pauseReason === 'desconexión'
+              ? 'Se ha perdido la conexión con el otro móvil'
+              : `La ha pedido ${app.label([...g.events].reverse().find((e) => e.kind === 'pause')?.by)}`}
+          </p>
           {#if opp.connected}
             <button class="btn" style="max-width:320px" onclick={() => onCommand('seguir')}>Seguir</button>
-            <span class="mono say">o di «{callsignLabel(me.callsign)}, seguir»</span>
+            <span class="say">o di «{me.name}, seguir»</span>
           {:else}
-            <span class="mono say">Se reanudará sola cuando vuelva la conexión.</span>
+            <span class="say">Seguirá sola cuando vuelva la conexión.</span>
           {/if}
         {/if}
       </div>
@@ -296,17 +305,16 @@
     {#if g.phase === 'finalizing'}
       <div class="confirmbar nogesture">
         <div class="cbfill" style="width:{(confirmLeft / (cfg.confirmedKill ? 10000 : 5000)) * 100}%"></div>
-        <span class="mono">
-          {g.winner === me.id ? 'BAJA CONFIRMÁNDOSE' : 'ELIMINADO'} · {Math.ceil(confirmLeft / 1000)} s ·
-          {g.winner === me.id ? 'el rival puede anular' : `di «${callsignLabel(me.callsign)}, anular» o mantén pulsado`}
+        <span>
+          {Math.ceil(confirmLeft / 1000)} s ·
+          {g.winner === me.id ? 'el rival aún puede anular' : `di «${me.name}, anular» o mantén pulsado`}
         </span>
       </div>
     {/if}
 
     {#if voice.state === 'off' && (playing || g.phase === 'countdown')}
-      <button class="micoff nogesture" onclick={() => voice.start()}>🎙 Activar micro</button>
+      <button class="micoff nogesture" onclick={() => voice.start()}>Activar micro</button>
     {/if}
-
   </div>
 {/if}
 
@@ -316,135 +324,130 @@
     inset: 0;
     overflow: hidden;
     touch-action: none;
+    background: var(--me);
+    color: var(--me-ink);
+    transition:
+      background 0.4s,
+      color 0.4s;
+  }
+  .game.critical {
+    background: #0d0d0d;
+    color: var(--danger);
   }
   .hud {
     position: absolute;
     inset: 0;
     display: flex;
     flex-direction: column;
-    padding: calc(var(--sat) + 10px) 16px calc(var(--sab) + 12px);
-    gap: 10px;
   }
 
-  /* barra superior */
-  .topbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 10px;
-  }
-  .tl {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  .tag {
-    font-weight: 800;
-    font-size: 16px;
-    text-transform: uppercase;
-    background: var(--me);
-    color: var(--bg);
-    padding: 2px 8px;
-    clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%);
-  }
-  .clock {
-    font-size: 12px;
-    color: var(--text);
-  }
-
-  /* rival */
-  .opp {
-    --cut: 12px;
+  /* franja del rival */
+  .oppband {
     position: relative;
+    background: var(--opp);
+    color: var(--opp-ink);
+    padding: calc(var(--sat) + 12px) 20px 22px;
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    padding: 10px 16px;
-    background: linear-gradient(90deg, color-mix(in srgb, var(--opp) 22%, transparent), var(--panel));
-    border-left: 4px solid var(--opp);
+    align-items: flex-end;
+    clip-path: polygon(0 0, 100% 0, 100% 78%, 0 100%);
   }
-  .ol {
+  .obl {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 10px;
+    min-width: 0;
   }
-  .ocs {
+  .oname {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--display);
+    font-weight: 900;
     font-size: 34px;
-    font-weight: 800;
     text-transform: uppercase;
-    color: var(--opp);
     line-height: 1;
+    min-width: 0;
+  }
+  .oname span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .oname :global(.av) {
+    background: var(--opp-ink) !important;
+  }
+  .oname :global(.av svg) {
+    fill: var(--opp) !important;
   }
   .onum {
-    font-size: 84px;
-    font-weight: 800;
-    line-height: 0.85;
-    color: var(--opp);
-    text-shadow: 0 0 22px color-mix(in srgb, var(--opp) 60%, transparent);
-    font-variant-numeric: tabular-nums;
+    font-size: 96px;
+    line-height: 0.75;
+    margin-bottom: -4px;
   }
   .nosig {
     position: absolute;
     inset: 0;
     display: grid;
     place-items: center;
-    background: rgba(0, 0, 0, 0.7);
-    font-family: var(--mono);
+    background: rgba(0, 0, 0, 0.75);
     color: var(--warn);
+    font-weight: 800;
+    text-transform: uppercase;
     animation: blink 1s infinite;
   }
 
-  /* tiempo */
-  .timer {
+  .meta {
     display: flex;
-    flex-direction: column;
+    justify-content: space-between;
     align-items: center;
+    padding: 4px 20px 0;
+    gap: 12px;
   }
-  .tval {
-    font-size: min(17vh, 120px);
-    font-weight: 800;
-    line-height: 0.85;
-    font-variant-numeric: tabular-nums;
+  .rec {
+    font-size: 20px;
     letter-spacing: 0.02em;
   }
+
+  .timer {
+    text-align: center;
+    margin-top: 4px;
+    margin-bottom: 10px;
+  }
+  .tval {
+    font-size: min(12vh, 108px);
+    line-height: 0.85;
+  }
   .dimv {
-    color: var(--dim);
+    opacity: 0.6;
   }
   .timer.low .tval {
-    color: var(--warn);
     animation: blink 0.5s steps(2) infinite;
   }
   .sd {
+    font-family: var(--display);
+    font-weight: 900;
     font-size: 54px;
-    font-weight: 800;
-    color: var(--danger);
-    text-shadow: 0 0 24px var(--danger);
+    text-transform: uppercase;
     animation: blink 0.8s infinite;
   }
 
-  /* mis vidas */
-  .mine {
+  /* dorsal */
+  .dorsal {
     flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 6px;
-    min-height: 0;
+    gap: 14px;
   }
   .mnum {
-    font-size: min(40vh, 330px);
-    font-weight: 800;
-    line-height: 0.8;
-    color: var(--me);
-    text-shadow:
-      0 0 40px color-mix(in srgb, var(--me) 55%, transparent),
-      0 0 4px var(--me);
-    font-variant-numeric: tabular-nums;
+    font-size: min(40vh, 360px);
+    line-height: 0.76;
+    letter-spacing: -0.03em;
   }
   .critical .mnum {
-    color: var(--danger);
-    text-shadow: 0 0 50px var(--danger);
     animation: beat 0.95s infinite;
   }
   @keyframes beat {
@@ -453,80 +456,109 @@
       transform: scale(1);
     }
     10% {
-      transform: scale(1.07);
-    }
-    25% {
-      transform: scale(1.02);
-    }
-    35% {
       transform: scale(1.06);
     }
+    25% {
+      transform: scale(1.01);
+    }
+    35% {
+      transform: scale(1.05);
+    }
+  }
+  .mine {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding-bottom: 8px;
+  }
+  .myname {
+    font-family: var(--display);
+    font-weight: 900;
+    font-size: 40px;
+    text-transform: uppercase;
+    line-height: 1;
   }
   .variant {
-    font-family: var(--mono);
-    font-size: 10px;
-    letter-spacing: 0.2em;
-    color: var(--warn);
-    border: 1px solid var(--warn);
-    padding: 3px 8px;
+    font-size: 12px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    border: 2px solid currentColor;
+    padding: 2px 8px;
   }
 
-  /* pie */
   .foot {
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     justify-content: space-between;
     gap: 10px;
+    padding: 0 20px calc(var(--sab) + 16px);
   }
   .hint {
-    font-size: 10px;
-    color: var(--faint);
-    letter-spacing: 0.1em;
+    font-size: 12px;
+    font-weight: 600;
+    opacity: 0.6;
+    line-height: 1.4;
   }
   .pausebtn {
     flex: none;
-    width: 64px;
-    height: 64px;
+    width: 68px;
+    height: 68px;
     appearance: none;
-    border: 2px solid var(--line2);
-    background: var(--panel);
-    clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+    border: none;
+    border-radius: 50%;
+    background: currentColor;
+    display: grid;
+    place-items: center;
   }
   .pausebtn svg {
     width: 30px;
-    fill: var(--text);
+    fill: var(--me);
+  }
+  .critical .pausebtn svg {
+    fill: #0d0d0d;
   }
   .pausebtn:active {
-    background: var(--me);
+    transform: scale(0.94);
   }
 
   /* killfeed */
   .feed {
-    position: absolute;
-    right: 12px;
-    top: calc(var(--sat) + 150px);
     display: flex;
     flex-direction: column;
-    align-items: flex-end;
-    gap: 4px;
+    align-items: flex-start;
+    gap: 5px;
     pointer-events: none;
+    min-width: 0;
   }
   .kf {
     display: flex;
     align-items: center;
-    gap: 8px;
-    background: rgba(0, 0, 0, 0.75);
-    border-right: 3px solid var(--text);
-    padding: 4px 10px;
+    gap: 4px;
+    background: #0d0d0d;
+    padding: 3px;
+    color: var(--paper);
+  }
+  .kf span {
+    font-family: var(--display);
+    font-weight: 900;
     font-size: 20px;
     text-transform: uppercase;
+    padding: 1px 8px;
+    line-height: 1.1;
+  }
+  .kf svg {
+    width: 18px;
+    fill: none;
+    stroke: var(--paper);
+    stroke-width: 3;
   }
   .kf.undone {
-    opacity: 0.4;
-    text-decoration: line-through;
+    opacity: 0.45;
   }
-  .arrow {
-    color: var(--dim);
+  .kf.undone span {
+    text-decoration: line-through;
   }
 
   /* efectos */
@@ -534,13 +566,13 @@
     position: absolute;
     inset: 0;
     pointer-events: none;
-    box-shadow: inset 0 0 120px 40px rgba(255, 30, 60, 0.55);
+    box-shadow: inset 0 0 140px 50px rgba(255, 46, 58, 0.5);
     animation: vig 0.95s infinite;
   }
   @keyframes vig {
     0%,
     100% {
-      opacity: 0.45;
+      opacity: 0.4;
     }
     12% {
       opacity: 1;
@@ -549,52 +581,43 @@
       opacity: 0.7;
     }
   }
-  .noise {
-    position: absolute;
-    inset: -50%;
-    pointer-events: none;
-    opacity: 0.07;
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
-    animation: grain 0.4s steps(4) infinite;
-    mix-blend-mode: screen;
-  }
-  @keyframes grain {
-    0% {
-      transform: translate(0, 0);
-    }
-    25% {
-      transform: translate(-6%, 4%);
-    }
-    50% {
-      transform: translate(5%, -3%);
-    }
-    75% {
-      transform: translate(-3%, -6%);
-    }
-  }
   .hurtflash {
     position: absolute;
     inset: 0;
     pointer-events: none;
-    background: radial-gradient(circle, rgba(255, 40, 60, 0.35), rgba(255, 0, 30, 0.85));
-    animation: flashout 0.6s ease-out forwards;
+    background: var(--danger);
+    animation: hurt 0.6s ease-out forwards;
+    mix-blend-mode: normal;
+  }
+  @keyframes hurt {
+    0% {
+      opacity: 1;
+      background: #fff;
+    }
+    12% {
+      opacity: 1;
+      background: var(--danger);
+    }
+    100% {
+      opacity: 0;
+    }
   }
   .confirmflash {
     position: absolute;
     inset: 0;
     pointer-events: none;
-    box-shadow: inset 0 0 0 6px var(--me), inset 0 0 60px color-mix(in srgb, var(--me) 50%, transparent);
-    animation: flashout 0.45s ease-out forwards;
+    box-shadow: inset 0 0 0 10px currentColor;
+    animation: out 0.4s ease-out forwards;
   }
   .goflash {
     position: absolute;
     inset: 0;
     pointer-events: none;
     background: #fff;
-    animation: flashout 0.5s ease-out forwards;
+    animation: out 0.5s ease-out forwards;
     z-index: 40;
   }
-  @keyframes flashout {
+  @keyframes out {
     from {
       opacity: 1;
     }
@@ -605,23 +628,22 @@
   .hitmarker {
     position: absolute;
     left: 50%;
-    top: 52%;
-    width: 180px;
-    height: 180px;
+    top: 56%;
+    width: 200px;
+    height: 200px;
     transform: translate(-50%, -50%);
     pointer-events: none;
   }
   .hitmarker svg {
     width: 100%;
-    stroke: #fff;
-    stroke-width: 7;
+    stroke: currentColor;
+    stroke-width: 9;
     stroke-linecap: square;
-    filter: drop-shadow(0 0 10px var(--me));
     animation: hm 0.55s cubic-bezier(0.2, 1.6, 0.4, 1) forwards;
   }
   @keyframes hm {
     0% {
-      transform: scale(1.6);
+      transform: scale(1.7);
       opacity: 0;
     }
     20% {
@@ -638,12 +660,9 @@
   }
   .plus {
     position: absolute;
-    left: 100%;
-    top: 0;
-    font-size: 64px;
-    font-weight: 800;
-    color: var(--me);
-    text-shadow: 0 0 20px var(--me);
+    left: 92%;
+    top: -6%;
+    font-size: 84px;
     animation: plus 1s ease-out forwards;
   }
   @keyframes plus {
@@ -656,21 +675,21 @@
       transform: translate(0, 0) scale(1.1);
     }
     to {
-      transform: translate(10px, -60px) scale(1);
+      transform: translate(10px, -70px) scale(1);
       opacity: 0;
     }
   }
   .holdring {
     position: fixed;
-    width: 110px;
-    height: 110px;
+    width: 120px;
+    height: 120px;
     transform: translate(-50%, -50%);
     pointer-events: none;
   }
   .holdring circle {
     fill: none;
-    stroke: var(--warn);
-    stroke-width: 6;
+    stroke: currentColor;
+    stroke-width: 8;
     stroke-dasharray: 277;
     stroke-dashoffset: 277;
     transform: rotate(-90deg);
@@ -686,37 +705,40 @@
   /* banners */
   .banner {
     position: absolute;
-    left: -10px;
-    right: -10px;
-    top: 40%;
-    padding: 14px 24px;
+    left: -20px;
+    right: -20px;
+    top: 42%;
+    padding: 16px 30px 18px;
     text-align: center;
-    transform: skewY(-4deg);
-    background: var(--me);
-    color: var(--bg);
+    transform: rotate(-6deg);
+    background: #0d0d0d;
+    color: var(--paper);
     pointer-events: none;
     z-index: 30;
-    box-shadow: 0 0 60px color-mix(in srgb, var(--me) 60%, transparent);
   }
   .banner.danger {
     background: var(--danger);
-    box-shadow: 0 0 60px var(--danger);
+    color: #fff;
   }
-  .banner.opp {
-    background: var(--opp);
+  .banner.me {
+    background: #0d0d0d;
+    color: var(--me);
   }
   .banner.neutral {
-    background: var(--text);
+    background: var(--paper);
+    color: #0d0d0d;
   }
   .btitle {
-    font-size: 64px;
-    font-weight: 800;
-    line-height: 0.9;
+    font-family: var(--display);
+    font-weight: 900;
+    font-size: 76px;
+    text-transform: uppercase;
+    line-height: 0.85;
   }
   .bsub {
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 700;
-    margin-top: 6px;
+    margin-top: 8px;
   }
 
   /* superposiciones */
@@ -732,90 +754,110 @@
     text-align: center;
     z-index: 35;
   }
-  .count,
-  .pause {
-    background: rgba(6, 8, 11, 0.9);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
+  .dark {
+    background: rgba(13, 13, 13, 0.96);
+    color: var(--paper);
   }
   .go {
     pointer-events: none;
   }
   .cdn {
-    font-size: min(50vh, 340px);
-    font-weight: 800;
-    line-height: 0.8;
+    font-size: min(60vh, 460px);
+    line-height: 0.76;
     color: var(--me);
-    text-shadow: 0 0 60px var(--me);
   }
-  .go .cdn {
-    font-size: min(30vh, 200px);
-    color: #fff;
+  .gotext {
+    font-family: var(--display);
+    font-weight: 900;
+    font-size: min(34vh, 240px);
+    text-transform: uppercase;
+    line-height: 0.8;
+    color: #0d0d0d;
   }
   .ptitle {
-    font-size: 110px;
-    font-weight: 800;
-    letter-spacing: 0.08em;
+    font-family: var(--display);
+    font-weight: 900;
+    font-size: 140px;
+    text-transform: uppercase;
+    line-height: 0.8;
+  }
+  .pwho {
+    margin: 0;
+    font-size: 15px;
+    color: var(--mute);
   }
   .say {
-    font-size: 13px;
-    color: var(--dim);
+    font-size: 14px;
+    color: var(--mute);
   }
   .confirmbar {
     position: absolute;
     left: 0;
     right: 0;
-    bottom: calc(var(--sab) + 90px);
-    height: 36px;
-    background: rgba(0, 0, 0, 0.8);
+    top: 62%;
+    height: 40px;
+    background: #0d0d0d;
+    color: var(--paper);
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 32;
-    font-size: 11px;
+    font-size: 13px;
+    font-weight: 700;
   }
   .cbfill {
     position: absolute;
     left: 0;
     top: 0;
     bottom: 0;
-    background: color-mix(in srgb, var(--danger) 45%, transparent);
+    background: var(--danger);
   }
   .confirmbar span {
     position: relative;
   }
   .micoff {
     position: absolute;
-    top: calc(var(--sat) + 44px);
-    right: 12px;
+    top: calc(var(--sat) + 140px);
+    left: 20px;
     z-index: 33;
     appearance: none;
-    border: 1px solid var(--warn);
-    background: rgba(0, 0, 0, 0.8);
-    color: var(--warn);
-    font-family: var(--mono);
-    font-size: 12px;
-    padding: 8px 12px;
+    border: none;
+    background: #0d0d0d;
+    color: var(--paper);
+    font-family: var(--body);
+    font-weight: 700;
+    font-size: 13px;
+    padding: 9px 14px;
+    border-radius: 4px;
   }
   .botpanel {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 6px;
-    background: rgba(0, 0, 0, 0.75);
-    border: 1px dashed var(--opp);
+    margin: 0 20px 12px;
     padding: 8px;
-    z-index: 34;
+    background: #0d0d0d;
+    color: var(--paper);
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .botpanel span {
+    flex: 1 0 100%;
+    color: var(--mute);
   }
   .botpanel button {
+    flex: 1;
     appearance: none;
     background: var(--opp);
-    color: var(--bg);
+    color: var(--opp-ink);
     border: none;
     font-family: var(--display);
-    font-weight: 800;
-    font-size: 15px;
+    font-weight: 900;
+    font-size: 18px;
     text-transform: uppercase;
-    padding: 6px 10px;
+    padding: 8px 6px;
+    border-radius: 3px;
   }
 </style>

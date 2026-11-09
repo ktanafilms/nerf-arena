@@ -1,7 +1,7 @@
 // Reconocimiento de voz continuo (Web Speech API) con reinicio automático,
 // filtro por indicativo y bloqueo mientras habla el narrador.
 
-import { parseCommands, type Command } from './matcher';
+import { parseCommands, type Callsign, type Command } from './matcher';
 import { narratorBusy } from '../audio/narrator';
 
 const SR: any = typeof window !== 'undefined' ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition : null;
@@ -29,8 +29,10 @@ class Recognizer {
   private restartTimer: ReturnType<typeof setTimeout> | null = null;
   private failures = 0;
 
-  callsign = '';
-  others: string[] = [];
+  callsign: Callsign = [];
+  others: Callsign[] = [];
+  /** Recibe cada transcripción final (para la calibración) */
+  onFinal: ((text: string) => void) | null = null;
   allowed: Command[] = [];
   onCommand: (c: Command) => void = () => {};
 
@@ -134,6 +136,7 @@ class Recognizer {
       const fresh = cmds.slice(already);
       this.consumed.set(i, Math.max(already, cmds.length));
       if (text.trim()) this.heard = { text: text.trim(), cmd: null, at: Date.now() };
+      if (res.isFinal && !narratorBusy()) this.onFinal?.(res[0]?.transcript ?? '');
       if (narratorBusy()) continue; // lo que oiga mientras habla la app se descarta
       for (const c of fresh) {
         const last = this.lastCmdAt[c] ?? 0;

@@ -2,7 +2,7 @@
 // Todas las funciones mutan la sala y devuelven true si ha cambiado algo.
 
 import type { DuelConfig, Game, GEvent, Intent, Profile, Room } from '../types';
-import { COLORS, CALLSIGNS } from '../types';
+import { COLORS } from '../types';
 import { defaultConfig } from '../modes';
 
 export const COUNTDOWN_MS = 3600; // 3-2-1 (+ margen) antes del ¡YA!
@@ -47,7 +47,6 @@ function resolveConflicts(room: Room, pid: string, profile: Profile): Profile {
   if (!other) return profile;
   const p = { ...profile };
   if (p.color === other.color) p.color = COLORS.find((c) => c.id !== other.color)!.id;
-  if (p.callsign === other.callsign) p.callsign = CALLSIGNS.find((c) => c.id !== other.callsign)!.id;
   return p;
 }
 

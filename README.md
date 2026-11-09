@@ -8,7 +8,7 @@ App árbitro para partidas de Nerf a 2 jugadores, con un móvil cada uno. Es una
 2. Uno pulsa **Crear partida**. El otro escanea el QR con la cámara o escribe el código de 4 letras en **Unirse**.
 3. Elegid el modo, pulsad **¡Listo!** los dos y empieza la cuenta atrás.
 4. Durante la partida:
-   - Voz: «[tu indicativo], tocado / estado / pausa / seguir / anular».
+   - Voz: «[tu nombre], tocado / estado / pausa / seguir / anular».
    - Plan B táctil: **doble toque** = tocado, **mantener pulsado** = anular. El botón de pausa siempre está visible.
 5. Para instalarla como app:
    - **iPhone**: Safari › Compartir › Añadir a pantalla de inicio.
@@ -43,5 +43,5 @@ El repositorio incluye `.github/workflows/deploy.yml`: cada `git push` a `main` 
 - **WebRTC entre los móviles (PeerJS)**. El broker público gratuito de PeerJS solo se usa para que los móviles se encuentren; después la conexión es directa.
   - El móvil que crea la sala hace de árbitro (`src/lib/engine/room.ts`). Valida las órdenes, descarta duplicados (pausa o seguir desde los dos móviles) y sincroniza los relojes con pings.
   - Fuera de casa, si los dos usáis datos móviles y no conectan, que uno comparta internet al otro (punto de acceso).
-- **Voz**: Web Speech API (`src/lib/voice`). Solo cuenta el indicativo propio seguido de una orden. Lo que se oye mientras habla el narrador se descarta.
+- **Voz**: Web Speech API (`src/lib/voice`). Solo cuenta tu nombre (o cómo lo transcribe tu móvil, aprendido en la prueba de voz) seguido de una orden. Lo que se oye mientras habla el narrador se descarta.
 - **Sonidos**: todos sintetizados con Web Audio (`src/lib/audio/sfx.ts`), sin archivos.
