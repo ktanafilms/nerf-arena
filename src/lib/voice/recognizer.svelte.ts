@@ -25,6 +25,18 @@ export interface Heard {
   at: number;
 }
 
+// Variantes de español: si iOS rechaza una, al reintentar se prueba la siguiente
+const LANGS = ['es-ES', 'es-MX', 'es-US', 'es', ''];
+let langIdx = (() => {
+  try {
+    const saved = localStorage.getItem('nerf.voiceLang');
+    const i = saved === null ? 0 : LANGS.indexOf(saved);
+    return i >= 0 ? i : 0;
+  } catch {
+    return 0;
+  }
+})();
+
 async function micPermission(): Promise<'granted' | 'denied' | 'prompt' | 'unknown'> {
   try {
     const st = await (navigator as any).permissions?.query({ name: 'microphone' });
@@ -116,13 +128,17 @@ class Recognizer {
       this.errorMsg = 'No se pudo iniciar el reconocimiento de voz en este navegador.';
       return;
     }
-    rec.lang = 'es-ES';
+    rec.lang = LANGS[langIdx];
+    this.note(`idioma: ${LANGS[langIdx] || 'por defecto'}`);
     rec.continuous = true;
     rec.interimResults = true;
     rec.maxAlternatives = 3;
     this.consumed.clear();
     rec.onstart = () => {
       this.note('escuchando');
+      try {
+        localStorage.setItem('nerf.voiceLang', LANGS[langIdx]);
+      } catch {}
       this.state = 'listening';
       this.everListened = true;
       this.notAllowedStreak = 0;
@@ -183,18 +199,15 @@ class Recognizer {
       this.errorMsg = 'Otra app está usando el micrófono (¿grabación de pantalla con micro, llamada…?).';
       return;
     }
-    if (err === 'language-not-supported') {
-      this.state = 'unavailable';
-      this.errorMsg = 'Tu móvil no tiene el reconocimiento de voz en español instalado.';
-      return;
-    }
-    if (err === 'service-not-allowed') {
+    if (err === 'service-not-allowed' || err === 'language-not-supported') {
+      // probar otra variante de español en el siguiente intento
+      if (!this.everListened) langIdx = (langIdx + 1) % LANGS.length;
       this.state = 'unavailable';
       this.errorMsg =
         isIOS && isStandalone
           ? 'En iPhone la voz no funciona desde el icono de inicio. Abre la web en Safari.'
           : isIOS
-            ? 'Activa el Dictado: Ajustes › General › Teclado › Activar Dictado (y que Siri esté permitido).'
+            ? `iOS no deja usar el reconocimiento de voz (variante probada: ${LANGS[(langIdx + LANGS.length - 1) % LANGS.length] || 'por defecto'}). Pulsa «Reintentar» para probar otra variante de español. Si ninguna va: Ajustes › Siri › activa Siri, y en Tiempo de uso › Restricciones permite «Siri y Dictado».`
             : 'El servicio de voz del sistema no está disponible. En Android revisa que la app de Google esté instalada y actualizada.';
       return;
     }
