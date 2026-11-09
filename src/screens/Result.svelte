@@ -6,6 +6,7 @@
   import { colorDef } from '../lib/types';
   import { modeInfo } from '../lib/modes';
   import Avatar from '../components/Avatar.svelte';
+  import HudExport from '../components/HudExport.svelte';
 
   const s = app.session!;
   const room = $derived(s.room!);
@@ -18,6 +19,8 @@
   const iReady = $derived(!!room.ready[me.id]);
   const oppReady = $derived(!!room.ready[opp.id]);
   const duration = $derived(gameTime(g, g.endedAt ?? s.now()));
+
+  let hud = $state(false);
 
   async function copy() {
     const text = timeline(room);
@@ -139,12 +142,17 @@
         {iReady ? (oppReady ? '¡Vamos!' : 'Esperando al rival…') : oppReady ? 'Revancha · te espera' : 'Revancha'}
       </button>
       <div class="two">
+        <button class="btn ghost small" onclick={() => (hud = true)}>Vídeo del HUD</button>
         <button class="btn ghost small" onclick={() => s.send({ t: 'toLobby' })}>Otro modo</button>
-        <button class="btn ghost small" onclick={copy}>Copiar tiempos</button>
       </div>
+      <button class="link copy" onclick={copy}>Copiar línea de tiempo</button>
     </div>
   </div>
 </div>
+
+{#if hud}
+  <HudExport {room} onclose={() => (hud = false)} />
+{/if}
 
 <style>
   .result {
@@ -281,6 +289,10 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 8px;
+  }
+  .copy {
+    align-self: center;
+    padding: 2px 0;
   }
   .two .btn {
     font-size: 20px;

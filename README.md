@@ -16,6 +16,31 @@ App árbitro para partidas de Nerf a 2 jugadores, con un móvil cada uno. Es una
 
 **Modo prueba**: «Probar en un solo móvil» crea un rival simulado (bot) con botones para que haga de segundo jugador.
 
+## Modos
+
+| Modo | En una frase | Órdenes |
+|---|---|---|
+| Duelo | Vidas para cada uno; gana quien deje al otro sin ninguna. | tocado |
+| Juego de armas | Cada acierto te sube de nivel (6 niveles); gana quien acierta desde el 6. | tocado |
+| Bomba | El portador se la quita de encima dándote; pierde quien la tenga al explotar. | tocado |
+| Cazador y presa | La presa aguanta escondida (su móvil pita); luego se cambian los papeles. | tocado (la presa) |
+| Buscar y destruir | El atacante esconde su móvil-bomba; el otro lo desactiva manteniendo 5 s. | tocado (quien desactiva) |
+| Tiro al blanco | La app canta una lata; quien la tumbe antes dice «mía». | mía · bomba |
+
+En todos: «estado», «pausa», «seguir» y «anular» (deshace tu última acción en 5 s).
+
+## Vídeo del HUD para montar
+
+Al terminar una partida, **Vídeo del HUD** genera en el propio móvil un `.mov` con **fondo transparente**:
+
+- Marcador de retransmisión con nombres, iconos y puntuación.
+- Reloj de partida y rótulos de cada jugada (impactos, niveles, bomba pasada, rondas…).
+- Cuenta atrás 3-2-1-¡YA! y tarjeta final con el ganador.
+- Formatos: horizontal 1920×1080 o vertical 1080×1920, a 30 fps.
+- Empieza 3 s antes del ¡YA!: el pitido de claqueta cae justo en el segundo 3.
+- Códec PNG con canal alfa: se abre en Premiere, Final Cut, DaVinci Resolve y After Effects. Ponlo en una pista encima del vídeo de la cámara.
+- En iPhone, guárdalo con «Guardar en Archivos» o pásalo por AirDrop. Si lo guardas en Fotos, se pierde la transparencia.
+
 ## Sincronizar con vuestras cámaras
 
 - En el **¡YA!** de cada partida, los dos móviles hacen a la vez un **destello blanco y un pitido fuerte** (la claqueta). En la edición, alinead el audio de las cámaras con ese pitido.

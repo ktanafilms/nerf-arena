@@ -52,7 +52,7 @@
       <div class="stage" in:fly={{ x: 80 * dir, duration: 260 }}>
         <div class="disc"></div>
         <span class="art"><ModeIcon d={info.icon} size={120} stroke={3} /></span>
-        <h1 class="display">{info.name}</h1>
+        <h1 class="display" class:long={info.name.length > 8}>{info.name}</h1>
         <p class="tag">{info.available ? info.tag : 'Próximamente'}</p>
       </div>
     {/key}
@@ -96,7 +96,7 @@
     </div>
   {/if}
 
-  <div class="grow"></div>
+  <div class="grow"><p class="sumtxt">{info.summary}</p></div>
 
   <div class="ready-row">
     {#each [app.me, app.opp] as p}
@@ -197,6 +197,17 @@
     50% {
       transform: translate(-50%, -6px);
     }
+  }
+  h1.long {
+    font-size: clamp(38px, 6.2vh, 58px);
+  }
+  .sumtxt {
+    margin: 0;
+    padding-top: 12px;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.4;
+    color: var(--mute);
   }
   h1 {
     position: relative;

@@ -22,7 +22,54 @@
       st.textContent = '.goflash,.hurtflash,.boomflash,.confirmflash,.hitmarker,.banner,.wipe{display:none!important}';
       document.head.appendChild(st);
     }
-    if (demo === 'vozfile') {
+    if (demo === 'hud') {
+      // Simula una partida y expone la exportación del HUD para probarla
+      (window as any).__hud = async (mode: string, fmt: '16:9' | '9:16') => {
+        const E = await import('./lib/engine/room');
+        const { exportHud } = await import('./lib/overlay/export');
+        let t = Date.now() - 3600_000;
+        const r = E.createRoom('TEST', { name: 'Pablo', color: 'naranja', icon: 'rayo', aliases: [] });
+        E.joinGuest(r, { name: 'Marta', color: 'azul', icon: 'calavera', aliases: [] });
+        const I = (pid: string, it: any) => E.applyIntent(r, pid, it, t);
+        const adv = (ms: number) => {
+          for (let x = 0; x < ms; x += 100) {
+            t += 100;
+            E.tick(r, t);
+          }
+        };
+        I('A', { t: 'selectMode', mode });
+        if (mode === 'cazador') I('A', { t: 'config', mode, config: { hideSec: 20, maxSec: 120 } });
+        if (mode === 'buscar') I('A', { t: 'config', mode, config: { plantSec: 45, bombSec: 90, rounds: 2 } });
+        if (mode === 'blanco') I('A', { t: 'config', mode, config: { rounds: 5 } });
+        I('A', { t: 'ready', ready: true });
+        I('B', { t: 'ready', ready: true });
+        adv(4000);
+        const g = () => r.game!;
+        for (let i = 0; i < 400 && g().phase !== 'ended'; i++) {
+          adv(4000);
+          if (g().phase !== 'playing') continue;
+          if (i === 3) {
+            I('A', { t: 'pause' });
+            adv(5000);
+            I('B', { t: 'resume' });
+            adv(3100);
+          }
+          if (mode === 'duelo' || mode === 'armas') I(i % 3 ? 'B' : 'A', { t: 'hit' });
+          if (mode === 'bomba') I(g().m.holder === 'A' ? 'B' : 'A', { t: 'hit' });
+          if (mode === 'cazador' && g().m.sub === 'hunt' && i % 9 === 0) I(g().m.prey, { t: 'hit' });
+          if (mode === 'buscar' && g().m.sub === 'bomb' && g().round === 1) I(g().m.attacker, { t: 'defuse' });
+          if (mode === 'blanco' && g().m.sub === 'live') I(i % 2 ? 'A' : 'B', { t: 'claim', at: t - 200 });
+        }
+        (window as any).__hudStage = 'simulado ' + g().phase + ' ' + g().events.length;
+        const res = await exportHud(r, fmt, (f) => ((window as any).__hudStage = 'exportando ' + Math.round(f * 100)));
+        (window as any).__hudStage = 'mov listo';
+        const buf = new Uint8Array(await res.blob.arrayBuffer());
+        let bin = '';
+        for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+        (window as any).__hudB64 = btoa(bin);
+        return { len: (window as any).__hudB64.length, size: res.blob.size, frames: res.frames, unique: res.unique, seconds: res.seconds, events: g().events.length };
+      };
+    } else if (demo === 'vozfile') {
       // prueba del reconocimiento con una grabación, sin micro
       (async () => {
         const { loadModel } = await import('./lib/voice/vosk-engine');
