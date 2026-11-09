@@ -84,8 +84,8 @@ class Recognizer {
   private rec: any = null;
   private wanted = false;
   private everListened = false;
-  private consumed = new Map<number, number>();
-  private lastCmdAt: Partial<Record<Command, number>> = {};
+  private consumed = new Map<string, number>();
+  private lastCmdAt: Record<string, number> = {};
   private restartTimer: ReturnType<typeof setTimeout> | null = null;
   private failures = 0;
   private notAllowedStreak = 0;
@@ -97,7 +97,9 @@ class Recognizer {
   /** Recibe cada transcripción final (para la calibración) */
   onFinal: ((text: string) => void) | null = null;
   allowed: Command[] = [];
-  onCommand: (c: Command) => void = () => {};
+  onCommand: (c: Command, pid?: string) => void = () => {};
+  /** Modo "un móvil para los dos": escuchar varios jugadores (orden + quién la dijo) */
+  players: { pid: string; cs: Callsign }[] | null = null;
 
   /** Llamar SIEMPRE desde un toque del usuario (iOS lo exige). */
   start() {
@@ -335,32 +337,37 @@ class Recognizer {
   private handleText(raw: string, isFinal: boolean, idx: number, alts: string[] = []) {
     if (this.state !== 'listening') this.state = 'listening';
     this.target = Math.max(this.target, 0.8);
-    let text = raw;
-    let cmds = parseCommands(text, this.callsign, this.allowed, this.others);
-    if (isFinal && cmds.length === 0) {
-      for (const alt of alts.slice(1)) {
-        const c = parseCommands(alt, this.callsign, this.allowed, this.others);
-        if (c.length) {
-          cmds = c;
-          text = alt;
-          break;
+    if (raw.trim()) this.heard = { text: raw.trim(), cmd: null, at: Date.now() };
+    if (isFinal && !narratorBusy()) this.onFinal?.(raw);
+    const who = this.players ?? [{ pid: '', cs: this.callsign }];
+    for (const p of who) {
+      const others = this.players ? this.players.filter((x) => x.pid !== p.pid).map((x) => x.cs) : this.others;
+      let text = raw;
+      let cmds = parseCommands(text, p.cs, this.allowed, others);
+      if (isFinal && cmds.length === 0) {
+        for (const alt of alts.slice(1)) {
+          const c = parseCommands(alt, p.cs, this.allowed, others);
+          if (c.length) {
+            cmds = c;
+            text = alt;
+            break;
+          }
         }
       }
+      const key = `${idx}:${p.pid}`;
+      const already = this.consumed.get(key) ?? 0;
+      const fresh = cmds.slice(already);
+      this.consumed.set(key, Math.max(already, cmds.length));
+      if (narratorBusy()) continue; // lo que oiga mientras habla la app se descarta
+      for (const c of fresh) {
+        const k = `${p.pid}:${c}`;
+        if (Date.now() - (this.lastCmdAt[k] ?? 0) < 1200) continue;
+        this.lastCmdAt[k] = Date.now();
+        this.heard = { text: text.trim(), cmd: c, at: Date.now() };
+        this.onCommand(c, p.pid || undefined);
+      }
     }
-    const already = this.consumed.get(idx) ?? 0;
-    const fresh = cmds.slice(already);
-    this.consumed.set(idx, Math.max(already, cmds.length));
-    if (this.consumed.size > 200) this.consumed.clear();
-    if (text.trim()) this.heard = { text: text.trim(), cmd: null, at: Date.now() };
-    if (isFinal && !narratorBusy()) this.onFinal?.(raw);
-    if (narratorBusy()) return; // lo que oiga mientras habla la app se descarta
-    for (const c of fresh) {
-      const last = this.lastCmdAt[c] ?? 0;
-      if (Date.now() - last < 1200) continue;
-      this.lastCmdAt[c] = Date.now();
-      this.heard = { text: text.trim(), cmd: c, at: Date.now() };
-      this.onCommand(c);
-    }
+    if (this.consumed.size > 300) this.consumed.clear();
   }
 
   // Medidor visual sin abrir el micro: sigue la actividad que informa el reconocedor

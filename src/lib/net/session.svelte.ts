@@ -1,24 +1,41 @@
-// Sesiones de juego: host (autoritativo), invitado y modo de prueba local.
-// Conexión directa entre móviles con WebRTC (PeerJS, broker público gratuito).
+// Sesiones de juego: host (autoritativo), invitado, prueba con rival simulado y "un móvil para los dos".
+//
+// Conexión entre móviles con DOS rutas a la vez:
+//  · directa (WebRTC con PeerJS): la más rápida, pero algunas redes la bloquean
+//  · respaldo por servidor de mensajería público (MQTT sobre WebSocket): funciona con
+//    cualquier wifi, datos móviles o punto de acceso con internet
+// El invitado usa la directa si está abierta y, si no, el respaldo. El host contesta por las dos.
+// Para no saturar el respaldo, la partida se envía sin el historial y solo con los eventos nuevos.
 
 import Peer, { type DataConnection } from 'peerjs';
-import type { Intent, Profile, Room } from '../types';
+import type { GEvent, Intent, Profile, Room } from '../types';
 import { applyIntent, createRoom, ensureUndo, joinGuest, setConnected, tick } from '../engine/room';
+import { Mqtt } from './mqtt';
 
 const PREFIX = 'nerfarena-v1-';
+const TOPIC = (code: string) => `nerfarena/v2/${code}`;
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ';
 const HOST_SAVE = 'nerf.hostRoom';
 const HEARTBEAT_MS = 1000;
-const TIMEOUT_MS = 4500;
+const TIMEOUT_MS = 5000;
+const RELAY_FRESH_MS = 8000;
+// Solo en desarrollo: ?nodirect desactiva la ruta directa para probar el respaldo
+const NO_DIRECT = import.meta.env.DEV && typeof location !== 'undefined' && location.search.includes('nodirect');
 
 export type NetStatus = 'connecting' | 'online' | 'reconnecting' | 'error';
+export type Route = 'direct' | 'relay' | 'none';
 
+/** Qué tiene ya el invitado: último evento recibido de la partida `key` (= startAt) */
+interface Have {
+  key: number;
+  id: number;
+}
 type GuestMsg =
-  | { k: 'hello'; profile: Profile; clientId: string }
-  | { k: 'intent'; intent: Intent }
-  | { k: 'ping'; t0: number };
+  | { k: 'hello'; profile: Profile; clientId: string; have?: Have }
+  | { k: 'intent'; intent: Intent; have?: Have }
+  | { k: 'ping'; t0: number; have?: Have };
 type HostMsg =
-  | { k: 'room'; room: Room }
+  | { k: 'room'; room: Room; evs: GEvent[] | null; full: boolean }
   | { k: 'pong'; t0: number; th: number }
   | { k: 'full' };
 
@@ -45,28 +62,45 @@ function clientId(): string {
   }
 }
 
+export interface NetDiag {
+  direct: string; // estado de la ruta directa
+  relay: string; // estado del respaldo
+  rtt: number | null;
+}
+
 export abstract class Session {
   room = $state.raw<Room | null>(null);
   status = $state<NetStatus>('connecting');
   error = $state<string | null>(null);
+  route = $state<Route>('none');
+  diag = $state<NetDiag>({ direct: '…', relay: '…', rtt: null });
   abstract readonly me: string;
-  abstract readonly kind: 'host' | 'guest' | 'solo';
+  abstract readonly kind: 'host' | 'guest' | 'solo' | 'local';
   /** Reloj del host (ms epoch) visto desde este dispositivo. */
   abstract now(): number;
   abstract send(intent: Intent): void;
   abstract leave(): void;
 }
 
+/** Copia de la sala sin el historial de eventos (lo nuevo va aparte) */
+function stripEvents(r: Room): Room {
+  if (!r.game) return r;
+  return { ...r, game: { ...r.game, events: [] } };
+}
+
 // ───────────────────────────── HOST ─────────────────────────────
 
 export class HostSession extends Session {
   readonly me = 'A';
-  readonly kind: 'host' | 'solo' = 'host';
+  readonly kind: 'host' | 'solo' | 'local' = 'host';
   protected r: Room;
   private peer: Peer | null = null;
   private conn: DataConnection | null = null;
+  private relay: Mqtt | null = null;
   private guestClient: string | null = null;
   private lastGuestSeen = 0;
+  private lastRelaySeen = 0;
+  private guestHave: Have = { key: 0, id: 0 };
   private timer: ReturnType<typeof setInterval> | null = null;
   private closed = false;
 
@@ -87,42 +121,41 @@ export class HostSession extends Session {
   }
 
   start() {
-    this.openPeer(0);
+    if (!NO_DIRECT) this.openPeer(0);
+    this.openRelay();
   }
 
+  // ── ruta directa ──
   private openPeer(attempt: number) {
     if (this.closed) return;
-    this.status = attempt ? 'reconnecting' : 'connecting';
+    this.status = this.status === 'online' ? 'online' : attempt ? 'reconnecting' : 'connecting';
+    this.diag = { ...this.diag, direct: 'conectando' };
     const peer = new Peer(PREFIX + this.r.code, { debug: 0 });
     this.peer = peer;
     peer.on('open', () => {
       this.status = 'online';
       this.error = null;
+      this.diag = { ...this.diag, direct: 'esperando' };
     });
     peer.on('connection', (c) => this.onConnection(c));
     peer.on('disconnected', () => {
       if (this.closed) return;
-      this.status = 'reconnecting';
+      this.diag = { ...this.diag, direct: 'reconectando' };
       setTimeout(() => !this.closed && !peer.destroyed && peer.reconnect(), 1500);
     });
     peer.on('error', (err: any) => {
       if (this.closed) return;
       if (err?.type === 'unavailable-id') {
-        // El broker aún recuerda la sesión anterior (recarga rápida): reintentar
+        // El emparejador aún recuerda la sesión anterior (recarga rápida): reintentar
         peer.destroy();
         if (attempt < 12) setTimeout(() => this.openPeer(attempt + 1), 2500);
-        else {
-          this.status = 'error';
-          this.error = 'El código de sala está ocupado. Crea una sala nueva.';
-        }
+        else this.diag = { ...this.diag, direct: 'no disponible' };
       } else if (err?.type === 'network' || err?.type === 'server-error' || err?.type === 'socket-error') {
-        this.status = 'reconnecting';
-        this.error = 'Sin conexión con el servidor de emparejamiento. Reintentando…';
+        this.diag = { ...this.diag, direct: 'sin emparejador' };
         peer.destroy();
-        setTimeout(() => this.openPeer(attempt + 1), 3000);
+        setTimeout(() => this.openPeer(attempt + 1), 4000);
       } else if (err?.type === 'browser-incompatible') {
-        this.status = 'error';
-        this.error = 'Este navegador no soporta conexiones directas (WebRTC).';
+        this.diag = { ...this.diag, direct: 'no compatible' };
       }
     });
   }
@@ -131,36 +164,89 @@ export class HostSession extends Session {
     c.on('data', (raw) => {
       const msg = raw as GuestMsg;
       if (msg.k === 'hello') {
-        const guest = this.r.players.find((p) => p.id === 'B');
-        if (guest && guest.connected && this.guestClient && this.guestClient !== msg.clientId) {
+        if (!this.acceptHello(msg)) {
           c.send({ k: 'full' } satisfies HostMsg);
           setTimeout(() => c.close(), 500);
           return;
         }
         if (this.conn && this.conn !== c) this.conn.close();
         this.conn = c;
-        this.guestClient = msg.clientId;
-        this.lastGuestSeen = Date.now();
-        const now = Date.now();
-        if (guest) {
-          // Reconexión: respetamos su perfil actual de la sala
-          setConnected(this.r, 'B', true, now);
-        } else {
-          joinGuest(this.r, msg.profile);
-        }
-        this.commit();
+        this.diag = { ...this.diag, direct: 'conectada' };
+        this.commit(true);
         return;
       }
       if (c !== this.conn) return;
-      this.lastGuestSeen = Date.now();
-      if (msg.k === 'ping') c.send({ k: 'pong', t0: msg.t0, th: Date.now() } satisfies HostMsg);
-      else if (msg.k === 'intent') {
-        if (applyIntent(this.r, 'B', msg.intent, Date.now())) this.commit();
-      }
+      this.onGuestMsg(msg, (m) => c.send(m));
     });
     c.on('close', () => {
-      if (c === this.conn) this.guestLost();
+      if (c === this.conn) {
+        this.conn = null;
+        this.diag = { ...this.diag, direct: 'cerrada' };
+      }
     });
+  }
+
+  // ── ruta de respaldo ──
+  private openRelay() {
+    const base = TOPIC(this.r.code);
+    const relay = new Mqtt(`nerf-h-${this.r.code}-${Math.random().toString(36).slice(2, 8)}`, {
+      onState: (st) => {
+        this.diag = { ...this.diag, relay: st === 'online' ? 'lista' : st === 'connecting' ? 'conectando' : 'caída' };
+        if (st === 'online') {
+          this.status = 'online';
+          this.commit(true);
+        }
+      },
+      onMessage: (_t, payload) => {
+        let env: { c: string; m: GuestMsg };
+        try {
+          env = JSON.parse(payload);
+        } catch {
+          return;
+        }
+        const msg = env.m;
+        if (msg.k === 'hello') {
+          if (!this.acceptHello(msg)) {
+            relay.publish(`${base}/g`, JSON.stringify({ c: env.c, m: { k: 'full' } }));
+            return;
+          }
+          this.lastRelaySeen = Date.now();
+          this.commit(true);
+          return;
+        }
+        if (env.c !== this.guestClient) return;
+        this.lastRelaySeen = Date.now();
+        this.diag = { ...this.diag, relay: 'en uso' };
+        this.onGuestMsg(msg, (m) => relay.publish(`${base}/g`, JSON.stringify({ c: this.guestClient, m })));
+      },
+    });
+    relay.subscribe(`${base}/h`);
+    relay.connect();
+    this.relay = relay;
+  }
+
+  /** Acepta (o rechaza si la sala ya tiene otro invitado) un saludo por cualquier ruta */
+  private acceptHello(msg: Extract<GuestMsg, { k: 'hello' }>): boolean {
+    const guest = this.r.players.find((p) => p.id === 'B');
+    if (guest && guest.connected && this.guestClient && this.guestClient !== msg.clientId) return false;
+    this.guestClient = msg.clientId;
+    this.lastGuestSeen = Date.now();
+    this.guestHave = msg.have ?? { key: 0, id: 0 };
+    const now = Date.now();
+    if (guest) setConnected(this.r, 'B', true, now);
+    else joinGuest(this.r, msg.profile);
+    return true;
+  }
+
+  private onGuestMsg(msg: GuestMsg, reply: (m: HostMsg) => void) {
+    this.lastGuestSeen = Date.now();
+    if ('have' in msg && msg.have) this.guestHave = msg.have;
+    const guest = this.r.players.find((p) => p.id === 'B');
+    if (guest && !guest.connected && setConnected(this.r, 'B', true, Date.now())) this.commit();
+    if (msg.k === 'ping') reply({ k: 'pong', t0: msg.t0, th: Date.now() });
+    else if (msg.k === 'intent') {
+      if (applyIntent(this.r, 'B', msg.intent, Date.now())) this.commit();
+    }
   }
 
   private guestLost() {
@@ -172,16 +258,37 @@ export class HostSession extends Session {
     const guest = this.r.players.find((p) => p.id === 'B');
     if (this.kind === 'host' && guest?.connected && now - this.lastGuestSeen > TIMEOUT_MS) this.guestLost();
     if (tick(this.r, now)) this.commit();
+    if (this.kind === 'host') {
+      const direct = !!this.conn?.open;
+      const relay = now - this.lastRelaySeen < RELAY_FRESH_MS;
+      const route: Route = direct ? 'direct' : relay ? 'relay' : 'none';
+      if (route !== this.route) this.route = route;
+    }
   }
 
   send(intent: Intent) {
     if (applyIntent(this.r, this.me, intent, Date.now())) this.commit();
   }
 
-  protected commit() {
+  /** Mensaje de sala para el invitado: sin historial + eventos que le faltan */
+  private roomMsg(forceFull: boolean): HostMsg {
+    const g = this.r.game;
+    if (!g) return { k: 'room', room: this.r, evs: null, full: true };
+    const have = this.guestHave.key === g.startAt ? this.guestHave.id : 0;
+    const evs = forceFull || !have ? g.events : g.events.filter((e) => e.id > have);
+    return { k: 'room', room: stripEvents(this.r), evs, full: forceFull || !have };
+  }
+
+  protected commit(forceFull = false) {
     this.r.rev++;
     this.publish();
-    if (this.conn?.open) this.conn.send({ k: 'room', room: this.r } satisfies HostMsg);
+    if (this.kind === 'host') {
+      const msg = this.roomMsg(forceFull);
+      if (this.conn?.open) this.conn.send(msg);
+      const relayUseful = !this.conn?.open || Date.now() - this.lastRelaySeen < RELAY_FRESH_MS || forceFull;
+      if (this.relay?.online && relayUseful)
+        this.relay.publish(`${TOPIC(this.r.code)}/g`, JSON.stringify({ c: this.guestClient, m: msg }));
+    }
     this.save();
   }
 
@@ -203,6 +310,7 @@ export class HostSession extends Session {
     if (this.timer) clearInterval(this.timer);
     this.conn?.close();
     this.peer?.destroy();
+    this.relay?.close();
     if (this.kind === 'host') {
       try {
         localStorage.removeItem(HOST_SAVE);
@@ -230,6 +338,7 @@ export class GuestSession extends Session {
   readonly kind = 'guest' as const;
   private peer: Peer | null = null;
   private conn: DataConnection | null = null;
+  private relay: Mqtt | null = null;
   private offset = 0;
   private bestRtt = Infinity;
   private samples: { rtt: number; off: number }[] = [];
@@ -238,6 +347,11 @@ export class GuestSession extends Session {
   private closed = false;
   private connecting = false;
   private queue: Intent[] = [];
+  private startedAt = Date.now();
+  private events: GEvent[] = [];
+  private eventsKey = 0;
+  private lastRev = -1;
+  private readonly cid = clientId();
 
   constructor(
     readonly code: string,
@@ -252,8 +366,21 @@ export class GuestSession extends Session {
 
   start() {
     this.status = 'connecting';
+    if (!NO_DIRECT) this.openPeer();
+    this.openRelay();
+    this.hb = setInterval(() => this.heartbeat(), HEARTBEAT_MS);
+    document.addEventListener('visibilitychange', this.onVisible);
+  }
+
+  private have(): Have {
+    return { key: this.eventsKey, id: this.events.length ? this.events[this.events.length - 1].id : 0 };
+  }
+
+  // ── ruta directa ──
+  private openPeer() {
     const peer = new Peer({ debug: 0 });
     this.peer = peer;
+    this.diag = { ...this.diag, direct: 'conectando' };
     peer.on('open', () => this.connect());
     peer.on('disconnected', () => {
       if (!this.closed) setTimeout(() => !peer.destroyed && peer.reconnect(), 1500);
@@ -262,22 +389,14 @@ export class GuestSession extends Session {
       if (this.closed) return;
       this.connecting = false;
       if (err?.type === 'peer-unavailable') {
-        if (!this.room) {
-          this.status = 'error';
-          this.error = `No existe la sala ${this.code}. Revisa el código.`;
-        } else {
-          this.status = 'reconnecting';
-          setTimeout(() => this.connect(), 2500);
-        }
+        this.diag = { ...this.diag, direct: 'sala no encontrada' };
+        setTimeout(() => this.connect(), 3000);
       } else if (err?.type === 'browser-incompatible') {
-        this.status = 'error';
-        this.error = 'Este navegador no soporta conexiones directas (WebRTC).';
+        this.diag = { ...this.diag, direct: 'no compatible' };
       } else {
-        this.status = 'reconnecting';
+        this.diag = { ...this.diag, direct: 'sin emparejador' };
       }
     });
-    this.hb = setInterval(() => this.heartbeat(), HEARTBEAT_MS);
-    document.addEventListener('visibilitychange', this.onVisible);
   }
 
   private onVisible = () => {
@@ -295,6 +414,7 @@ export class GuestSession extends Session {
     const giveUp = setTimeout(() => {
       if (!c.open) {
         this.connecting = false;
+        this.diag = { ...this.diag, direct: 'bloqueada por la red' };
         c.close();
       }
     }, 8000);
@@ -302,66 +422,135 @@ export class GuestSession extends Session {
       clearTimeout(giveUp);
       this.connecting = false;
       this.conn = c;
-      this.lastHostSeen = Date.now();
-      c.send({ k: 'hello', profile: this.profile, clientId: clientId() } satisfies GuestMsg);
+      this.diag = { ...this.diag, direct: 'conectada' };
+      c.send({ k: 'hello', profile: this.profile, clientId: this.cid, have: this.have() } satisfies GuestMsg);
       this.ping();
-      for (const it of this.queue.splice(0)) c.send({ k: 'intent', intent: it } satisfies GuestMsg);
+      this.flushQueue();
     });
-    c.on('data', (raw) => {
-      const msg = raw as HostMsg;
-      this.lastHostSeen = Date.now();
-      if (msg.k === 'room') {
-        this.room = msg.room;
-        this.status = 'online';
-        this.error = null;
-      } else if (msg.k === 'pong') {
-        const t1 = Date.now();
-        const rtt = t1 - msg.t0;
-        const off = msg.th - (msg.t0 + t1) / 2;
-        this.samples.push({ rtt, off });
-        if (this.samples.length > 12) this.samples.shift();
-        const best = this.samples.reduce((a, b) => (b.rtt < a.rtt ? b : a));
-        if (best.rtt <= this.bestRtt * 1.5 || this.samples.length < 3) this.offset = best.off;
-        this.bestRtt = best.rtt;
-      } else if (msg.k === 'full') {
-        this.status = 'error';
-        this.error = 'La sala ya tiene dos jugadores.';
-        this.closed = true;
-      }
-    });
+    c.on('data', (raw) => this.onHostMsg(raw as HostMsg, 'direct'));
     c.on('close', () => {
       if (c === this.conn) {
         this.conn = null;
-        if (!this.closed) this.status = 'reconnecting';
+        this.diag = { ...this.diag, direct: 'cerrada' };
       }
     });
   }
 
+  // ── ruta de respaldo ──
+  private openRelay() {
+    const base = TOPIC(this.code);
+    const relay = new Mqtt(`nerf-g-${this.code}-${this.cid.slice(0, 6)}-${Math.random().toString(36).slice(2, 6)}`, {
+      onState: (st) => {
+        this.diag = { ...this.diag, relay: st === 'online' ? 'lista' : st === 'connecting' ? 'conectando' : 'caída' };
+        if (st === 'online') this.sendRelay({ k: 'hello', profile: this.profile, clientId: this.cid, have: this.have() });
+      },
+      onMessage: (_t, payload) => {
+        let env: { c: string | null; m: HostMsg };
+        try {
+          env = JSON.parse(payload);
+        } catch {
+          return;
+        }
+        if (env.c && env.c !== this.cid) return; // es para otro invitado
+        this.onHostMsg(env.m, 'relay');
+      },
+    });
+    relay.subscribe(`${base}/g`);
+    relay.connect();
+    this.relay = relay;
+  }
+
+  private sendRelay(m: GuestMsg) {
+    return this.relay?.publish(`${TOPIC(this.code)}/h`, JSON.stringify({ c: this.cid, m })) ?? false;
+  }
+
+  private onHostMsg(msg: HostMsg, via: Route) {
+    this.lastHostSeen = Date.now();
+    if (msg.k === 'room') {
+      if (msg.room.rev < this.lastRev && !msg.full) return; // llegó tarde por la otra ruta
+      this.lastRev = msg.room.rev;
+      this.applyRoom(msg);
+      this.status = 'online';
+      this.error = null;
+      if (via === 'relay' && !this.conn?.open) this.diag = { ...this.diag, relay: 'en uso' };
+    } else if (msg.k === 'pong') {
+      const t1 = Date.now();
+      const rtt = t1 - msg.t0;
+      const off = msg.th - (msg.t0 + t1) / 2;
+      this.samples.push({ rtt, off });
+      if (this.samples.length > 12) this.samples.shift();
+      const best = this.samples.reduce((a, b) => (b.rtt < a.rtt ? b : a));
+      if (best.rtt <= this.bestRtt * 1.5 || this.samples.length < 3) this.offset = best.off;
+      this.bestRtt = best.rtt;
+      this.diag = { ...this.diag, rtt };
+    } else if (msg.k === 'full') {
+      this.status = 'error';
+      this.error = 'La sala ya tiene dos jugadores.';
+      this.closed = true;
+    }
+  }
+
+  /** Reconstruye la sala: estado sin historial + eventos (completos o solo los nuevos) */
+  private applyRoom(msg: Extract<HostMsg, { k: 'room' }>) {
+    const room = msg.room;
+    const g = room.game;
+    if (!g) {
+      this.events = [];
+      this.eventsKey = 0;
+      this.room = room;
+      return;
+    }
+    if (msg.evs) {
+      if (msg.full || this.eventsKey !== g.startAt) {
+        this.events = msg.evs.slice();
+        this.eventsKey = g.startAt;
+      } else {
+        const last = this.events.length ? this.events[this.events.length - 1].id : 0;
+        const fresh = msg.evs.filter((e) => e.id > last);
+        this.events = this.events.concat(fresh);
+      }
+    }
+    this.room = { ...room, game: { ...g, events: this.events } };
+  }
+
   private ping() {
-    if (this.conn?.open) this.conn.send({ k: 'ping', t0: Date.now() } satisfies GuestMsg);
+    const m: GuestMsg = { k: 'ping', t0: Date.now(), have: this.have() };
+    if (this.conn?.open) this.conn.send(m);
+    else this.sendRelay(m);
   }
 
   private heartbeat() {
     if (this.closed) return;
-    if (this.conn?.open) {
-      this.ping();
-      if (Date.now() - this.lastHostSeen > TIMEOUT_MS) {
-        this.status = 'reconnecting';
-        this.conn.close();
-        this.conn = null;
+    this.ping();
+    const direct = !!this.conn?.open;
+    const fresh = Date.now() - this.lastHostSeen < TIMEOUT_MS;
+    this.route = direct ? 'direct' : fresh ? 'relay' : 'none';
+    if (fresh) {
+      if (this.status !== 'online' && this.room) this.status = 'online';
+    } else {
+      // sin noticias del host: (re)saludar por el respaldo (pudo perderse o el host se reinició)
+      this.sendRelay({ k: 'hello', profile: this.profile, clientId: this.cid, have: this.have() });
+      if (this.room) this.status = 'reconnecting';
+      else if (Date.now() - this.startedAt > 25000 && this.status === 'connecting') {
+        this.status = 'error';
+        this.error = `No encuentro la sala ${this.code}. Revisa el código y que el otro móvil tenga la sala abierta.`;
       }
-    } else if (this.room || this.status === 'connecting') {
-      this.connect();
     }
+    if (direct && Date.now() - this.lastHostSeen > TIMEOUT_MS) {
+      this.conn?.close();
+      this.conn = null;
+    }
+    if (!direct && !NO_DIRECT) this.connect();
+  }
+
+  private flushQueue() {
+    for (const it of this.queue.splice(0)) this.send(it);
   }
 
   send(intent: Intent) {
-    if (this.conn?.open) this.conn.send({ k: 'intent', intent } satisfies GuestMsg);
-    else if (intent.t === 'profile' || intent.t === 'ready') this.queue.push(intent);
-  }
-
-  get hostLost() {
-    return this.status !== 'online';
+    const m: GuestMsg = { k: 'intent', intent, have: this.have() };
+    if (this.conn?.open) this.conn.send(m);
+    else if (!this.sendRelay(m) && (intent.t === 'profile' || intent.t === 'ready')) this.queue.push(intent);
   }
 
   leave() {
@@ -370,17 +559,18 @@ export class GuestSession extends Session {
     document.removeEventListener('visibilitychange', this.onVisible);
     this.conn?.close();
     this.peer?.destroy();
+    this.relay?.close();
   }
 }
 
-// ───────────────────────────── PRUEBA (1 dispositivo) ─────────────────────────────
+// ───────────────────────────── PRUEBA (rival simulado) ─────────────────────────────
 
 /** Host local con un segundo jugador simulado ("bot") que se controla con botones. */
 export class SoloSession extends HostSession {
-  override readonly kind = 'solo' as const;
+  override readonly kind: 'solo' | 'local' = 'solo';
 
-  constructor(profile: Profile, botProfile: Profile) {
-    super('SOLO', profile);
+  constructor(profile: Profile, botProfile: Profile, code = 'SOLO') {
+    super(code, profile);
     joinGuest(this.r, botProfile);
     this.r.ready = {};
     this.status = 'online';
@@ -391,14 +581,30 @@ export class SoloSession extends HostSession {
     this.status = 'online';
   }
 
-  /** Acciones del rival simulado. */
+  /** Acciones del segundo jugador. */
   bot(intent: Intent) {
     if (applyIntent(this.r, 'B', intent, Date.now())) this.commit();
   }
 
-  /** El bot se marca listo automáticamente cuando el jugador lo está. */
+  /** El segundo jugador se marca listo automáticamente cuando el primero lo está. */
   override send(intent: Intent) {
     super.send(intent);
     if (intent.t === 'ready' && intent.ready) this.bot({ t: 'ready', ready: true });
+  }
+
+  /** Acción de cualquiera de los dos jugadores (para el modo de un móvil) */
+  as(pid: string, intent: Intent) {
+    if (pid === 'A') super.send(intent);
+    else this.bot(intent);
+  }
+}
+
+// ───────────────────────────── UN MÓVIL PARA LOS DOS ─────────────────────────────
+
+/** Un único móvil hace de árbitro para los dos jugadores. No necesita ninguna conexión. */
+export class LocalSession extends SoloSession {
+  override readonly kind = 'local' as const;
+  constructor(a: Profile, b: Profile) {
+    super(a, b, 'LOCAL');
   }
 }

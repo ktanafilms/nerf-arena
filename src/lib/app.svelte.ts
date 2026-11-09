@@ -3,7 +3,7 @@
 import type { Profile, Room } from './types';
 import { COLORS } from './types';
 import { ICONS } from './icons';
-import { GuestSession, HostSession, SoloSession, randomCode, type Session } from './net/session.svelte';
+import { GuestSession, HostSession, LocalSession, SoloSession, randomCode, type Session } from './net/session.svelte';
 import { unlockAudio } from './audio/sfx';
 import { unlockSpeech } from './audio/narrator';
 import { keepAwake } from './device';
@@ -11,6 +11,9 @@ import { voice } from './voice/recognizer.svelte';
 
 export interface Prefs {
   profile: Profile | null;
+  profile2: Profile | null; // segundo jugador en "un móvil para los dos"
+  recordingMode: boolean; // modo grabación
+  narratorVoice: string | null; // voz elegida para el narrador
   seenGuide: boolean;
   voiceTested: boolean;
   seenTip: boolean;
@@ -22,9 +25,27 @@ const PREFS_KEY = 'nerf.prefs';
 function loadPrefs(): Prefs {
   // Solo en desarrollo: ?demo salta la guía con un perfil de prueba (para capturas)
   if (import.meta.env.DEV && new URLSearchParams(location.search).has('demo')) {
-    return { profile: { name: 'Pablo', color: 'naranja', icon: 'rayo', aliases: [] }, seenGuide: true, voiceTested: true, seenTip: true, recording: false };
+    return {
+      profile: { name: 'Pablo', color: 'naranja', icon: 'rayo', aliases: [] },
+      profile2: { name: 'Marta', color: 'azul', icon: 'calavera', aliases: [] },
+      recordingMode: new URLSearchParams(location.search).has('rec'),
+      narratorVoice: null,
+      seenGuide: true,
+      voiceTested: true,
+      seenTip: true,
+      recording: false,
+    };
   }
-  const def: Prefs = { profile: null, seenGuide: false, voiceTested: false, seenTip: false, recording: false };
+  const def: Prefs = {
+    profile: null,
+    profile2: null,
+    recordingMode: false,
+    narratorVoice: null,
+    seenGuide: false,
+    voiceTested: false,
+    seenTip: false,
+    recording: false,
+  };
   try {
     const p: Prefs = { ...def, ...JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') };
     // Perfiles antiguos (con indicativo de lista): pedir nombre e icono de nuevo
@@ -40,7 +61,7 @@ function loadPrefs(): Prefs {
 }
 
 export type Screen = 'home' | 'guide' | 'profile' | 'join' | 'room' | 'voicetest';
-type After = { kind: 'create' } | { kind: 'join'; code: string } | { kind: 'solo' } | { kind: 'back' } | null;
+type After = { kind: 'create' } | { kind: 'join'; code: string } | { kind: 'solo' } | { kind: 'local' } | { kind: 'back' } | null;
 
 class App {
   prefs = $state<Prefs>(loadPrefs());
@@ -49,6 +70,8 @@ class App {
   after: After = null;
   /** Tras la prueba de voz: qué hacer */
   voiceTestThen: (() => void) | null = null;
+  /** La pantalla de perfil está editando al segundo jugador (un móvil para los dos) */
+  editingSecond = $state(false);
   toast = $state<string | null>(null);
   private toastTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -134,6 +157,26 @@ class App {
     this.startSession(new SoloSession(me, { name, color, icon, aliases: [] }));
   }
 
+  /** Un móvil para los dos: un único móvil hace de árbitro, sin conexión */
+  local() {
+    this.unlock();
+    if (!this.prefs.profile) return this.needProfile({ kind: 'local' });
+    if (!this.prefs.profile2) {
+      this.editingSecond = true;
+      return this.needProfile({ kind: 'local' });
+    }
+    const a = this.profile()!;
+    const b = $state.snapshot(this.prefs.profile2) as Profile;
+    if (b.color === a.color) b.color = COLORS.find((c) => c.id !== a.color)!.id;
+    this.startSession(new LocalSession(a, b));
+  }
+
+  editProfile2() {
+    this.editingSecond = true;
+    this.after = { kind: 'back' };
+    this.screen = 'profile';
+  }
+
   private startSession(s: HostSession | GuestSession) {
     this.session?.leave();
     this.session = s;
@@ -143,15 +186,24 @@ class App {
   }
 
   profileDone(p: Profile) {
-    this.prefs.profile = p;
-    this.savePrefs();
-    if (this.session) this.session.send({ t: 'profile', profile: this.profile()! });
+    if (this.editingSecond) {
+      this.editingSecond = false;
+      this.prefs.profile2 = p;
+      this.savePrefs();
+      const s = this.session;
+      if (s instanceof SoloSession) s.as('B', { t: 'profile', profile: $state.snapshot(p) as Profile });
+    } else {
+      this.prefs.profile = p;
+      this.savePrefs();
+      if (this.session) this.session.send({ t: 'profile', profile: this.profile()! });
+    }
     const a = this.after;
     this.after = null;
     if (!a || a.kind === 'back') this.screen = this.session ? 'room' : 'home';
     else if (a.kind === 'create') this.create();
     else if (a.kind === 'join') this.join(a.code);
     else if (a.kind === 'solo') this.solo();
+    else if (a.kind === 'local') this.local();
   }
 
   editProfile() {

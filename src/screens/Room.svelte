@@ -6,54 +6,66 @@
   import { say } from '../lib/audio/narrator';
   import { callsignOf } from '../lib/types';
   import { extraCommands } from '../lib/modes';
+  import { SoloSession } from '../lib/net/session.svelte';
   import Lobby from './Lobby.svelte';
   import ModeScreen from './ModeScreen.svelte';
   import Game from './Game.svelte';
+  import TvGame from './TvGame.svelte';
 
   const s = app.session!;
   const room = $derived(s.room);
 
   // Eventos de la partida → efectos
+  const isLocal = s.kind === 'local';
   $effect(() => {
-    fx.sync(room, s.me, s.now());
+    fx.sync(room, isLocal ? '' : s.me, s.now());
   });
 
   // Configurar la voz con mi indicativo
   $effect(() => {
     voice.callsign = callsignOf(app.me);
     voice.others = app.opp ? [callsignOf(app.opp)] : [];
+    // un móvil para los dos: escucha los dos nombres
+    voice.players = isLocal && room ? room.players.map((p) => ({ pid: p.id, cs: callsignOf(p) })) : null;
     voice.allowed = [...ALL_COMMANDS, ...extraCommands(room?.mode ?? 'duelo')];
   });
 
-  voice.onCommand = (c: Command) => handle(c);
+  voice.onCommand = (c: Command, pid?: string) => handle(c, pid);
 
-  export function handle(c: Command) {
+  /** Envía la acción como el jugador `pid` (solo en el modo de un móvil) */
+  function act(pid: string | undefined, it: Parameters<typeof s.send>[0]) {
+    if (isLocal && pid && s instanceof SoloSession) s.as(pid, it);
+    else s.send(it);
+  }
+
+  export function handle(c: Command, pid?: string) {
     fx.confirm();
+    const send = (it: Parameters<typeof s.send>[0]) => act(pid, it);
     switch (c) {
       case 'tocado':
         if (s.room?.game?.mode === 'blanco') {
           app.showToast(`En este modo di «${app.me?.name}, mía»`);
           break;
         }
-        s.send({ t: 'hit' });
+        send({ t: 'hit' });
         break;
       case 'mia':
-        s.send({ t: 'claim', at: s.now() });
+        send({ t: 'claim', at: s.now() });
         break;
       case 'bomba':
-        s.send({ t: 'bombcan' });
+        send({ t: 'bombcan' });
         break;
       case 'anular':
-        s.send({ t: 'undo' });
+        send({ t: 'undo' });
         break;
       case 'pausa':
-        s.send({ t: 'pause' });
+        send({ t: 'pause' });
         break;
       case 'seguir':
-        s.send({ t: 'resume' });
+        send({ t: 'resume' });
         break;
       case 'estado':
-        if (s.room) say(statusPhrase(s.room, s.me, s.now()), { interrupt: true });
+        if (s.room) say(statusPhrase(s.room, pid ?? s.me, s.now()), { interrupt: true });
         break;
     }
   }
@@ -83,7 +95,11 @@
     <div class="wipe"></div>
     <div class="enter" style="position:absolute;inset:0">
       {#if room.screen === 'game' && room.game}
-        <Game onCommand={handle} />
+        {#if isLocal}
+          <TvGame onCommand={handle} />
+        {:else}
+          <Game onCommand={handle} />
+        {/if}
       {:else if room.screen === 'mode'}
         <ModeScreen />
       {:else}

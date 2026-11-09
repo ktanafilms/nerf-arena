@@ -6,8 +6,10 @@
   import { sfx } from '../lib/audio/sfx';
   import Avatar from '../components/Avatar.svelte';
 
-  const cur = app.prefs.profile;
-  const opp = app.opp; // dentro de una sala no se puede repetir color
+  const second = app.editingSecond;
+  const cur = second ? app.prefs.profile2 : app.prefs.profile;
+  // el otro jugador: no se puede repetir color ni nombre
+  const opp = second ? (app.room?.players.find((p) => p.id === 'A') ?? app.prefs.profile) : app.opp;
   let name = $state(cur?.name ?? '');
   let icon = $state(cur?.icon ?? ICONS[0].id);
   let color = $state(cur?.color && cur.color !== opp?.color ? cur.color : COLORS.find((c) => c.id !== opp?.color)!.id);
@@ -18,20 +20,26 @@
   function save() {
     if (issue?.level === 'error') return;
     const aliases = cur && cur.name === name ? cur.aliases : []; // si cambias de nombre, se recalibra
-    if (cur && cur.name !== name) app.prefs.voiceTested = false;
+    if (!second && cur && cur.name !== name) app.prefs.voiceTested = false;
     app.profileDone({ name, color, icon, aliases });
   }
 </script>
 
 <div class="screen profile" style="--me:{c.hex};--me-ink:{c.ink}">
   <div class="head">
-    <span class="eyebrow">Tu perfil</span>
-    <button class="link" onclick={() => (app.screen = app.session ? 'room' : 'home')}>Volver</button>
+    <span class="eyebrow">{second ? 'Jugador 2 · mismo móvil' : 'Tu perfil'}</span>
+    <button
+      class="link"
+      onclick={() => {
+        app.editingSecond = false;
+        app.screen = app.session ? 'room' : 'home';
+      }}>Volver</button
+    >
   </div>
 
   <div class="preview">
     <Avatar {icon} {color} size={64} />
-    <div class="pname display">{name || 'Tu nombre'}</div>
+    <div class="pname display">{name || (second ? 'Jugador 2' : 'Tu nombre')}</div>
   </div>
 
   <section>

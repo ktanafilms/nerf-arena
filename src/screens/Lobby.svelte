@@ -9,6 +9,7 @@
   import QR from '../components/QR.svelte';
   import Avatar from '../components/Avatar.svelte';
   import ModeIcon from '../components/ModeIcon.svelte';
+  import NetSheet from '../components/NetSheet.svelte';
 
   const s = app.session!;
   const room = $derived(s.room!);
@@ -19,6 +20,7 @@
   const blocked = $derived(!opp?.connected || clash?.level === 'error');
   const waiting = $derived(s.kind === 'host' && !opp?.connected);
   let showQR = $state(false);
+  let net = $state(false);
   const qrOpen = $derived(waiting || showQR);
 
   const mc = $derived(colorDef(me?.color ?? 'naranja'));
@@ -40,12 +42,14 @@
 <div class="screen lobby">
   <!-- Barra superior -->
   <div class="top">
-    <button class="chip" onclick={() => (showQR = true)} disabled={s.kind === 'solo'}>
-      <span class="k">{s.kind === 'solo' ? 'Prueba' : 'Sala'}</span>
-      {#if s.kind !== 'solo'}<span class="code num">{room.code}</span>{/if}
+    <button class="chip" onclick={() => (showQR = true)} disabled={s.kind !== 'host'}>
+      <span class="k">{s.kind === 'solo' ? 'Prueba' : s.kind === 'local' ? 'Un móvil para los dos' : 'Sala'}</span>
+      {#if s.kind === 'host' || s.kind === 'guest'}<span class="code num">{room.code}</span>{/if}
     </button>
-    {#if s.kind !== 'solo'}
-      <span class="dot" class:ok={s.status === 'online'} title={s.status}></span>
+    {#if s.kind === 'host' || s.kind === 'guest'}
+      <button class="net" class:ok={s.route === 'direct'} class:mid={s.route === 'relay'} onclick={() => (net = true)}>
+        <i></i>{s.route === 'direct' ? 'Directa' : s.route === 'relay' ? 'Por servidor' : s.status === 'online' ? 'Esperando' : 'Conectando'}
+      </button>
     {/if}
     <span class="grow"></span>
     <button class="link" onclick={() => app.leave()}>Salir</button>
@@ -61,7 +65,8 @@
       {/if}
     </button>
     <div class="badge">VS</div>
-    <div class="side right" class:empty={!opp} style="--c:{opp ? oc.hex : 'var(--bg-2)'};--i:{opp ? oc.ink : 'var(--mute)'}">
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+    <div class="side right" class:empty={!opp} onclick={() => s.kind === 'local' && app.editProfile2()} style="--c:{opp ? oc.hex : 'var(--bg-2)'};--i:{opp ? oc.ink : 'var(--mute)'}">
       {#if opp}
         <Avatar icon={opp.icon} color={opp.color} size={44} />
         <span class="pname">{opp.name}</span>
@@ -133,6 +138,10 @@
   </div>
 {/if}
 
+{#if net}
+  <NetSheet onclose={() => (net = false)} />
+{/if}
+
 <style>
   .lobby {
     gap: clamp(8px, 1.6vh, 14px);
@@ -168,15 +177,33 @@
     letter-spacing: 0.08em;
     line-height: 1;
   }
-  .dot {
-    width: 10px;
-    height: 10px;
+  .net {
+    appearance: none;
+    border: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--bg-2);
+    color: var(--paper);
+    font-family: var(--body);
+    font-weight: 700;
+    font-size: 12px;
+    padding: 7px 10px;
+    border-radius: 999px;
+  }
+  .net i {
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
-    background: var(--warn);
+    background: var(--mute);
     animation: blink 1s infinite;
   }
-  .dot.ok {
+  .net.ok i {
     background: var(--ok);
+    animation: none;
+  }
+  .net.mid i {
+    background: var(--warn);
     animation: none;
   }
 

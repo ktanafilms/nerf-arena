@@ -36,7 +36,10 @@
     <button class="item" onclick={() => (app.screen = 'join')}>
       <span>Unirse</span><i>›</i>
     </button>
-    <button class="practice" onclick={() => app.solo()}>Practicar con rival simulado</button>
+    <div class="alt">
+      <button class="practice" onclick={() => app.local()}>Un móvil para los dos</button>
+      <button class="practice" onclick={() => app.solo()}>Practicar con rival simulado</button>
+    </div>
   </div>
 </div>
 
@@ -147,6 +150,11 @@
   }
   .item.small b {
     color: var(--me);
+  }
+  .alt {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
   }
   .practice {
     appearance: none;

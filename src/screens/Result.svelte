@@ -100,7 +100,7 @@
       <span>{modeInfo(g.mode).name}</span>
       <span class="num">{fmtClock(duration)}</span>
     </div>
-    <div class="verdict" in:fly={{ y: 60, duration: 500 }}>{!winner ? 'Empate' : won ? 'Victoria' : 'Derrota'}</div>
+    <div class="verdict" in:fly={{ y: 60, duration: 500 }}>{!winner ? 'Empate' : won || s.kind === 'local' ? 'Victoria' : 'Derrota'}</div>
     {#if winner}
       <div class="winner" in:fly={{ x: -60, duration: 450, delay: 150 }}>
         <Avatar icon={winner.icon} color={winner.color} size={48} />

@@ -16,6 +16,7 @@
 
   // Solo en desarrollo: ?demo=lobby|mode|game|result para revisar pantallas
   if (import.meta.env.DEV) {
+    (window as any).__app = app;
     const demo = params.get('demo');
     if (params.has('still')) {
       const st = document.createElement('style');
@@ -80,7 +81,8 @@
     } else if (demo === 'auto') {
       // Juega sola con el rival simulado (para revisar pantallas con tiempo virtual)
       const mode = (params.get('mode') as any) ?? 'duelo';
-      app.solo();
+      if (params.has('local')) app.local();
+      else app.solo();
       const s = app.session as any;
       s.send({ t: 'selectMode', mode });
       if (mode === 'cazador') s.send({ t: 'config', mode, config: { hideSec: 20, maxSec: 120 } });

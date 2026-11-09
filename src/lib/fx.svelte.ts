@@ -95,7 +95,137 @@ class Fx {
     this.hitKey++;
   }
 
+  /** Un móvil para los dos: narrador en tercera persona, efectos neutros */
+  private reactNeutral(room: Room, g: Game, e: GEvent) {
+    const nm = (pid?: string | null) => room.players.find((x) => x.id === pid)?.name ?? '';
+    const I = (t: string) => say(t, { interrupt: true });
+    const lineFor = (): string | null => {
+      switch (e.kind) {
+        case 'hit':
+          if (g.mode === 'duelo')
+            return (e.value ?? 0) <= 0 ? `¡${nm(e.victim)} eliminado!` : `Impacto a ${nm(e.victim)}. Le ${e.value === 1 ? 'queda una' : 'quedan ' + numberWord(e.value ?? 0)}.`;
+          if (g.mode === 'cazador') return `${nm(e.victim)} cazado. Aguantó ${secs(e.value ?? 0)}.`;
+          if (g.mode === 'armas') return `¡${nm(e.shooter)} supera el nivel final!`;
+          return `¡Baja! ${nm(e.victim)} ha caído.`;
+        case 'levelup':
+          return `${nm(e.by)}, nivel ${numberWord(e.value ?? 1)}. ${LEVELS[(e.value ?? 1) - 1]?.name}.`;
+        case 'leveldown':
+          return `Humillación. ${nm(e.by)} baja al nivel cinco.`;
+        case 'bombstart':
+          return `La bomba la lleva ${nm(e.by)}.`;
+        case 'bombpass':
+          return `¡Bomba pasada! Ahora la lleva ${nm(e.victim)}.`;
+        case 'blocked':
+          return 'Sin devolución todavía.';
+        case 'explode':
+          return g.mode === 'bomba' ? `¡Bum! Le ha explotado a ${nm(e.victim)}.` : '¡Bum! La bomba ha explotado.';
+        case 'hide':
+          return `${nm(e.by)} es la presa. A esconderse: ${secs(Number(g.config.hideSec) * 1000)}.`;
+        case 'hunt':
+          return '¡Empieza la caza!';
+        case 'survived':
+          return `¡Tiempo! ${nm(e.by)} ha sobrevivido.`;
+        case 'plant':
+          return `${nm(e.by)} esconde la bomba. Cuarenta y cinco segundos.`;
+        case 'armed':
+          return 'Bomba armada.';
+        case 'defused':
+          return `¡${nm(e.by)} ha desactivado la bomba!`;
+        case 'bombcan':
+          return `La lata bomba es la número ${numberWord(e.value ?? 0)}.`;
+        case 'call':
+          return `¡Lata ${numberWord(e.value ?? 0)}!`;
+        case 'claim':
+          return `Para ${nm(e.by)}. ${((e.value ?? 0) / 1000).toFixed(2).replace('.', ',')} segundos.`;
+        case 'tie':
+          return 'Empate. No puntúa.';
+        case 'nocall':
+          return 'Nadie. Siguiente.';
+        case 'bombhit':
+          return `${nm(e.by)} ha tumbado la lata bomba.`;
+        case 'lastlife':
+          return null;
+        case 'roundend':
+          return e.by ? `Ronda para ${nm(e.by)}.` : `Fin de la ronda ${numberWord(e.value ?? 1)}.`;
+        case 'undo':
+          return `Anulado por ${nm(e.by)}.`;
+        case 'pause':
+          return 'Pausa.';
+        case 'resume':
+          return 'Seguimos en tres.';
+        case 'timeup':
+          return '¡Tiempo!';
+        case 'suddendeath':
+          return 'Empate. Muerte súbita.';
+        case 'win':
+          return `¡Victoria de ${nm(e.by)}!`;
+        case 'draw':
+          return 'Empate.';
+        default:
+          return null;
+      }
+    };
+    // efectos
+    switch (e.kind) {
+      case 'start':
+      case 'roundstart':
+      case 'hunt':
+      case 'armed':
+        sfx.go();
+        this.goKey++;
+        break;
+      case 'hit':
+      case 'levelup':
+      case 'bombpass':
+      case 'claim':
+        if (e.shooter && e.victim) this.addFeed(e);
+        this.scored();
+        break;
+      case 'explode':
+      case 'bombhit':
+        sfx.boom();
+        this.boomKey++;
+        break;
+      case 'call':
+        sfx.call();
+        break;
+      case 'pause':
+        sfx.pause();
+        break;
+      case 'resume':
+        sfx.resume();
+        break;
+      case 'undo':
+        sfx.undo();
+        this.feed = this.feed.map((f) => (f.id === e.ref ? { ...f, undone: true } : f));
+        break;
+      case 'win':
+        sfx.victory();
+        break;
+      case 'bombstart':
+      case 'hide':
+      case 'plant':
+      case 'bombcan':
+        sfx.alert();
+        break;
+      case 'timeup':
+        sfx.alarm();
+        break;
+      case 'blocked':
+        sfx.error();
+        break;
+    }
+    const line = lineFor();
+    if (line) {
+      if (e.kind === 'call') say(line, { interrupt: true, rate: 1.3 });
+      else I(line);
+    }
+    const text = describe(room, g, e);
+    if (text && !['start', 'pause', 'resume', 'call'].includes(e.kind)) this.showBanner({ title: text, tone: 'neutral' }, 2200);
+  }
+
   private react(room: Room, g: Game, e: GEvent, me: string) {
+    if (me === '') return this.reactNeutral(room, g, e);
     const name = (pid?: string | null) => room.players.find((x) => x.id === pid)?.name ?? '';
     const opp = room.players.find((p) => p.id !== me)?.id ?? '';
     const mine = e.by === me;
