@@ -64,7 +64,6 @@
     {#each [me, opp] as p}
       <span><b>{p.name}</b> <span class="num">{g.roundWins[p.id] ?? 0}</span></span>
     {/each}
-    <span class="rnd">{g.round > R ? 'Muerte súbita' : `Ronda ${g.round}/${R}`}</span>
   </div>
 
   {#if sub === 'plant'}
@@ -133,13 +132,6 @@
   .pips .num {
     font-size: 26px;
   }
-  .rnd {
-    font-size: 11px;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    opacity: 0.7;
-  }
   .stage {
     flex: 1;
     min-height: 0;
@@ -158,7 +150,7 @@
     line-height: 0.9;
   }
   .big {
-    margin: 8px 0;
+    margin: 0.14em 0 0.04em;
     font-size: min(22vh, 40vw, 200px);
     line-height: 0.8;
   }

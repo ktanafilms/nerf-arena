@@ -107,7 +107,7 @@
     color: var(--me);
   }
   .big {
-    margin: 8px 0;
+    margin: 0.14em 0 0.04em;
     font-size: min(24vh, 46vw, 220px);
     line-height: 0.8;
   }

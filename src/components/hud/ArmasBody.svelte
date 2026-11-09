@@ -20,7 +20,6 @@
 </div>
 
 <div class="stage">
-  <span class="lbl">Nivel</span>
   {#key level}
     <div class="lv num" in:scale={{ start: 1.6, duration: 380 }}>{level}</div>
   {/key}
@@ -28,6 +27,7 @@
     {#if fx.levelKey}<div class="burst"></div>{/if}
   {/key}
   <div class="how">{info.name}</div>
+  <span class="lbl">Nivel {level} de 6</span>
 </div>
 
 <div class="ladder">
@@ -74,11 +74,12 @@
     text-transform: uppercase;
     opacity: 0.7;
     line-height: 1;
-    margin-bottom: 10px;
+    margin-top: 6px;
   }
   .lv {
-    font-size: min(calc((100cqh - 110px) / 0.8), 70cqw, 320px);
-    line-height: 0.78;
+    font-size: min(calc((100cqh - 130px) / 1), 70cqw, 280px);
+    line-height: 0.8;
+    margin-bottom: 0.14em;
   }
   .how {
     margin-top: 10px;

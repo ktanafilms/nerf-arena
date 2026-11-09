@@ -29,7 +29,6 @@
 <div class="wrap">
   <div class="top">
     <span class="bombchip">Lata bomba <b class="num">{g.m.bombCan}</b></span>
-    <span class="rnd">Ronda {Math.min(R, (g.m.done ?? 0) + 1)}/{R}</span>
   </div>
 
   <div class="stage">
@@ -85,13 +84,6 @@
   .bombchip b {
     font-size: 20px;
     margin-left: 4px;
-  }
-  .rnd {
-    font-size: 12px;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    opacity: 0.8;
   }
   .stage {
     flex: 1;

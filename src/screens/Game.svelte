@@ -220,7 +220,7 @@
       </div>
 
       <!-- Cuerpo propio de cada modo -->
-      <div class="body">
+      <div class="modebody">
         {#if g.mode === 'duelo'}
           <DuelBody {room} {g} {me} {gt} />
         {:else if g.mode === 'armas'}
@@ -331,9 +331,9 @@
           {#if lastRound?.reason}<p class="pwho">{lastRound.reason}</p>{/if}
           <div class="iscore">
             <span style="color:{mc.hex}">{me.name}</span>
-            <b class="num">{g.mode === 'cazador' ? fmtClock(g.m.survived?.[me.id] ?? 0) : (g.roundWins[me.id] ?? 0)}</b>
+            <b class="num">{g.mode === 'cazador' ? (g.m.survived?.[me.id] != null ? fmtClock(g.m.survived[me.id]) : '–') : (g.roundWins[me.id] ?? 0)}</b>
             <span class="dash">–</span>
-            <b class="num">{g.mode === 'cazador' ? fmtClock(g.m.survived?.[opp.id] ?? 0) : (g.roundWins[opp.id] ?? 0)}</b>
+            <b class="num">{g.mode === 'cazador' ? (g.m.survived?.[opp.id] != null ? fmtClock(g.m.survived[opp.id]) : '–') : (g.roundWins[opp.id] ?? 0)}</b>
             <span style="color:{oc.hex}">{opp.name}</span>
           </div>
         {/if}
@@ -374,9 +374,7 @@
       </div>
     {/if}
 
-    {#if (voice.state === 'off' || voice.state === 'tap') && (live || g.phase === 'countdown')}
-      <button class="micoff nogesture" onclick={() => voice.start()}>{voice.errorMsg ?? 'Toca para activar el micro'}</button>
-    {:else if (voice.state === 'denied' || voice.state === 'unavailable') && g.phase === 'countdown'}
+    {#if (voice.state === 'denied' || voice.state === 'unavailable') && g.phase === 'countdown'}
       <div class="micoff nogesture">{voice.errorMsg}</div>
     {/if}
   </div>
@@ -864,7 +862,7 @@
       background: #3a0608;
     }
   }
-  .body {
+  .modebody {
     flex: 1;
     min-height: 0;
     display: flex;

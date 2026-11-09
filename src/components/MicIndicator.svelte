@@ -11,7 +11,15 @@
   const recent = $derived(voice.heard && now - voice.heard.at < 2500 ? voice.heard : null);
   const live = $derived(voice.state === 'listening');
   const bad = $derived(voice.state === 'denied' || voice.state === 'unsupported' || voice.state === 'unavailable');
+  const needTap = $derived(voice.state === 'tap' || voice.state === 'off');
 </script>
+
+{#if needTap && showText}
+  <button class="tapmic nogesture" onclick={() => voice.start()}>
+    <svg viewBox="0 0 24 24"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM6 11a6 6 0 0 0 12 0M12 17v4" /></svg>
+    Activar micro
+  </button>
+{:else}
 
 <div class="mic" class:live class:bad>
   <span class="bars">
@@ -32,8 +40,31 @@
     </span>
   {/if}
 </div>
+{/if}
 
 <style>
+  .tapmic {
+    appearance: none;
+    border: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--warn);
+    color: #141100;
+    font-family: var(--body);
+    font-weight: 800;
+    font-size: 12px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    animation: blink 1.4s ease-in-out infinite;
+  }
+  .tapmic svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.4;
+  }
   .mic {
     display: flex;
     align-items: center;

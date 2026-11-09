@@ -135,7 +135,7 @@ const armas: ModeLogic = {
         const l = g.m.level?.[pid] ?? 1;
         return { main: String(l), sub: LEVELS[l - 1]?.short ?? '' };
       }),
-      center: g.m.sudden ? 'Muerte súbita' : 'Nivel',
+      center: g.m.sudden ? 'Muerte súbita' : '',
       clock: limit && !g.m.sudden ? { kind: 'down', ref: limit } : { kind: 'up', ref: 0 },
     };
   },
@@ -258,7 +258,7 @@ const cazador: ModeLogic = {
     const hideEnd = m.subStart + num(g, 'hideSec') * 1000;
     return {
       ...sides(room, (pid) => ({
-        main: m.survived?.[pid] != null ? mmss(m.survived[pid]) : '—',
+        main: m.survived?.[pid] != null ? mmss(m.survived[pid]) : '',
         sub: m.prey === pid ? 'presa' : 'cazador',
       })),
       center: m.sub === 'hide' ? `Ronda ${g.round}/2 · a esconderse` : `Ronda ${g.round}/2 · caza`,

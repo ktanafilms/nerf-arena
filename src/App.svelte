@@ -21,6 +21,14 @@
       const st = document.createElement('style');
       st.textContent = '.goflash,.hurtflash,.boomflash,.confirmflash,.hitmarker,.banner,.wipe{display:none!important}';
       document.head.appendChild(st);
+      // completar al instante las animaciones de entrada (el tiempo virtual las congela)
+      setInterval(() => {
+        document.getAnimations().forEach((a) => {
+          try {
+            if (a.effect?.getTiming().iterations !== Infinity) a.finish();
+          } catch {}
+        });
+      }, 100);
     }
     if (demo === 'hud') {
       // Simula una partida y expone la exportación del HUD para probarla
@@ -69,6 +77,28 @@
         (window as any).__hudB64 = btoa(bin);
         return { len: (window as any).__hudB64.length, size: res.blob.size, frames: res.frames, unique: res.unique, seconds: res.seconds, events: g().events.length };
       };
+    } else if (demo === 'auto') {
+      // Juega sola con el rival simulado (para revisar pantallas con tiempo virtual)
+      const mode = (params.get('mode') as any) ?? 'duelo';
+      app.solo();
+      const s = app.session as any;
+      s.send({ t: 'selectMode', mode });
+      if (mode === 'cazador') s.send({ t: 'config', mode, config: { hideSec: 20, maxSec: 120 } });
+      if (mode === 'buscar') s.send({ t: 'config', mode, config: { plantSec: 45, bombSec: 90, rounds: 2 } });
+      if (mode === 'blanco') s.send({ t: 'config', mode, config: { rounds: 4 } });
+      s.send({ t: 'ready', ready: true });
+      let i = 0;
+      setInterval(() => {
+        const g = s.room?.game;
+        if (!g || g.phase !== 'playing') return;
+        i++;
+        const act = (pid: string, it: any) => (pid === 'A' ? s.send(it) : s.bot(it));
+        if (mode === 'duelo' || mode === 'armas') act(i % 3 ? 'B' : 'A', { t: 'hit' });
+        if (mode === 'bomba') act(g.m.holder === 'A' ? 'B' : 'A', { t: 'hit' });
+        if (mode === 'cazador' && g.m.sub === 'hunt' && i % 6 === 0) act(g.m.prey, { t: 'hit' });
+        if (mode === 'buscar' && g.m.sub === 'bomb' && g.round === 1) act(g.m.attacker, { t: 'defuse' });
+        if (mode === 'blanco' && g.m.sub === 'live') act(i % 2 ? 'A' : 'B', { t: 'claim', at: s.now() });
+      }, 3000);
     } else if (demo === 'vozfile') {
       // prueba del reconocimiento con una grabación, sin micro
       (async () => {
