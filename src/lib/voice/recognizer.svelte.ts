@@ -1,14 +1,23 @@
 // Reconocimiento de voz continuo (Web Speech API) con reinicio automático,
-// filtro por indicativo y bloqueo mientras habla el narrador.
+// filtro por nombre y bloqueo mientras habla el narrador.
+//
+// Importante: NO se abre el micrófono por otra vía (getUserMedia) a la vez,
+// porque en iPhone y en muchos Android eso hace fallar al reconocedor con "not-allowed".
 
 import { parseCommands, type Callsign, type Command } from './matcher';
 import { narratorBusy } from '../audio/narrator';
+import { isIOS, isStandalone } from '../device';
 
 const SR: any = typeof window !== 'undefined' ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition : null;
 
 export const speechSupported = !!SR;
 
-export type VoiceState = 'off' | 'starting' | 'listening' | 'denied' | 'unsupported' | 'error';
+/**
+ * off: apagado · starting: arrancando · listening: escuchando
+ * tap: hay que tocar para (re)activarlo · denied: permiso denegado de verdad
+ * unavailable: el servicio de voz del sistema no está disponible · unsupported: navegador sin voz
+ */
+export type VoiceState = 'off' | 'starting' | 'listening' | 'tap' | 'denied' | 'unavailable' | 'unsupported';
 
 export interface Heard {
   text: string;
@@ -16,18 +25,32 @@ export interface Heard {
   at: number;
 }
 
+async function micPermission(): Promise<'granted' | 'denied' | 'prompt' | 'unknown'> {
+  try {
+    const st = await (navigator as any).permissions?.query({ name: 'microphone' });
+    return st?.state ?? 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
 class Recognizer {
   state = $state<VoiceState>(speechSupported ? 'off' : 'unsupported');
   errorMsg = $state<string | null>(null);
-  level = $state(0); // 0..1 nivel de entrada del micro
+  lastError = $state<string | null>(null); // código técnico, para diagnóstico
+  level = $state(0); // 0..1 actividad de voz (estimada por los eventos del reconocedor)
   heard = $state<Heard | null>(null);
 
   private rec: any = null;
   private wanted = false;
+  private everListened = false;
   private consumed = new Map<number, number>();
   private lastCmdAt: Partial<Record<Command, number>> = {};
   private restartTimer: ReturnType<typeof setTimeout> | null = null;
   private failures = 0;
+  private notAllowedStreak = 0;
+  private decay: ReturnType<typeof setInterval> | null = null;
+  private target = 0;
 
   callsign: Callsign = [];
   others: Callsign[] = [];
@@ -36,21 +59,33 @@ class Recognizer {
   allowed: Command[] = [];
   onCommand: (c: Command) => void = () => {};
 
-  // medidor de nivel
-  private stream: MediaStream | null = null;
-  private raf = 0;
-  meterEnabled = true;
-
-  async start() {
+  /** Llamar SIEMPRE desde un toque del usuario (iOS lo exige). */
+  start() {
     if (!SR) {
       this.state = 'unsupported';
       return;
     }
     this.wanted = true;
-    if (this.rec) return;
+    this.notAllowedStreak = 0;
+    this.failures = 0;
+    if (this.restartTimer) clearTimeout(this.restartTimer);
+    if (this.rec) {
+      // ya está en marcha: si estaba atascado, reiniciar
+      if (this.state === 'listening' || this.state === 'starting') return;
+      try {
+        this.rec.abort();
+      } catch {}
+      this.rec = null;
+    }
     this.state = 'starting';
+    this.errorMsg = null;
     this.boot();
-    if (this.meterEnabled) this.startMeter();
+    this.startDecay();
+  }
+
+  /** Reactiva solo si la partida lo necesita (lo llama el toque global). */
+  resumeIfWanted() {
+    if (this.wanted) this.start();
   }
 
   stop() {
@@ -60,12 +95,19 @@ class Recognizer {
       this.rec?.abort();
     } catch {}
     this.rec = null;
-    this.stopMeter();
-    if (this.state !== 'denied' && this.state !== 'unsupported') this.state = 'off';
+    this.stopDecay();
+    if (this.state !== 'unsupported') this.state = 'off';
   }
 
   private boot() {
-    const rec = new SR();
+    let rec: any;
+    try {
+      rec = new SR();
+    } catch {
+      this.state = 'unavailable';
+      this.errorMsg = 'No se pudo iniciar el reconocimiento de voz en este navegador.';
+      return;
+    }
     rec.lang = 'es-ES';
     rec.continuous = true;
     rec.interimResults = true;
@@ -73,36 +115,23 @@ class Recognizer {
     this.consumed.clear();
     rec.onstart = () => {
       this.state = 'listening';
+      this.everListened = true;
+      this.notAllowedStreak = 0;
       this.errorMsg = null;
     };
+    rec.onaudiostart = () => (this.target = 0.12);
+    rec.onsoundstart = () => (this.target = 0.35);
+    rec.onspeechstart = () => (this.target = 0.7);
+    rec.onspeechend = () => (this.target = 0.1);
     rec.onresult = (e: any) => this.onResult(e);
-    rec.onerror = (e: any) => {
-      const err = e?.error;
-      if (err === 'not-allowed' || err === 'service-not-allowed') {
-        this.state = 'denied';
-        this.errorMsg =
-          err === 'service-not-allowed'
-            ? 'El reconocimiento de voz no está disponible. En iPhone activa Ajustes › General › Teclado › Dictado.'
-            : 'Permiso de micrófono denegado.';
-        this.wanted = false;
-      } else if (err === 'network') {
-        this.errorMsg = 'El reconocimiento de voz necesita internet.';
-        this.failures++;
-      } else if (err === 'audio-capture') {
-        this.errorMsg = 'El micrófono está ocupado por otra app.';
-        this.failures++;
-        // En algunos Android el medidor de nivel bloquea el micro: lo apagamos
-        if (this.stream) {
-          this.stopMeter();
-          this.meterEnabled = false;
-        }
-      }
-    };
+    rec.onerror = (e: any) => this.onError(e?.error ?? 'desconocido');
     rec.onend = () => {
-      this.rec = null;
+      if (this.rec === rec) this.rec = null;
+      this.target = 0;
       if (!this.wanted) return;
+      if (this.state === 'tap' || this.state === 'denied' || this.state === 'unavailable') return;
       // Reinicio automático (el modo continuo se corta solo tras silencios)
-      const delay = Math.min(250 + this.failures * 500, 4000);
+      const delay = Math.min(300 + this.failures * 600, 4000);
       this.restartTimer = setTimeout(() => {
         if (this.wanted && !this.rec) this.boot();
       }, delay);
@@ -110,14 +139,64 @@ class Recognizer {
     this.rec = rec;
     try {
       rec.start();
-    } catch {
+    } catch (err: any) {
       this.rec = null;
+      // InvalidStateError = ya estaba arrancado; cualquier otra cosa: pedir toque
+      if (err?.name !== 'InvalidStateError') {
+        this.lastError = err?.name ?? 'start';
+        this.state = 'tap';
+      }
+    }
+  }
+
+  private async onError(err: string) {
+    this.lastError = err;
+    if (err === 'no-speech' || err === 'aborted') return; // normal: se reinicia solo
+    if (err === 'network') {
+      this.failures++;
+      this.errorMsg = 'El reconocimiento de voz necesita conexión a internet.';
+      return;
+    }
+    if (err === 'audio-capture') {
+      this.failures++;
+      this.errorMsg = 'Otra app está usando el micrófono (¿grabación de pantalla con micro, llamada…?).';
+      return;
+    }
+    if (err === 'language-not-supported') {
+      this.state = 'unavailable';
+      this.errorMsg = 'Tu móvil no tiene el reconocimiento de voz en español instalado.';
+      return;
+    }
+    if (err === 'service-not-allowed') {
+      this.state = 'unavailable';
+      this.errorMsg =
+        isIOS && isStandalone
+          ? 'En iPhone la voz no funciona desde el icono de inicio. Abre la web en Safari.'
+          : isIOS
+            ? 'Activa el Dictado: Ajustes › General › Teclado › Activar Dictado (y que Siri esté permitido).'
+            : 'El servicio de voz del sistema no está disponible. En Android revisa que la app de Google esté instalada y actualizada.';
+      return;
+    }
+    if (err === 'not-allowed') {
+      this.notAllowedStreak++;
+      const perm = await micPermission();
+      if (perm === 'denied') {
+        this.state = 'denied';
+        this.errorMsg = isIOS
+          ? 'Safari tiene el micrófono bloqueado para esta web. Toca «aA» en la barra de direcciones › Ajustes del sitio web › Micrófono › Permitir.'
+          : 'Chrome tiene el micrófono bloqueado para esta web. Toca el candado de la barra de direcciones › Permisos › Micrófono › Permitir.';
+      } else {
+        // Casi siempre: se intentó arrancar sin un toque (reinicio automático en iPhone)
+        this.state = 'tap';
+        this.errorMsg = this.everListened ? 'El micro se ha pausado. Toca para reactivarlo.' : 'Toca para activar el micro.';
+      }
     }
   }
 
   private onResult(e: any) {
     if (this.state !== 'listening') this.state = 'listening';
     this.failures = 0;
+    this.target = 1;
     for (let i = e.resultIndex; i < e.results.length; i++) {
       const res = e.results[i];
       let text: string = res[0]?.transcript ?? '';
@@ -148,44 +227,60 @@ class Recognizer {
     }
   }
 
-  private async startMeter() {
-    if (this.stream || !navigator.mediaDevices?.getUserMedia) return;
-    try {
-      this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
-      if (!this.wanted) return this.stopMeter();
-      const AC = window.AudioContext || (window as any).webkitAudioContext;
-      const ac: AudioContext = new AC();
-      const src = ac.createMediaStreamSource(this.stream);
-      const an = ac.createAnalyser();
-      an.fftSize = 512;
-      src.connect(an);
-      const buf = new Uint8Array(an.fftSize);
-      const loop = () => {
-        an.getByteTimeDomainData(buf);
-        let sum = 0;
-        for (const v of buf) sum += ((v - 128) / 128) ** 2;
-        const rms = Math.sqrt(sum / buf.length);
-        this.level = this.level * 0.6 + Math.min(1, rms * 4) * 0.4;
-        this.raf = requestAnimationFrame(loop);
-      };
-      loop();
-      (this.stream as any)._ac = ac;
-    } catch {
-      this.stream = null;
-    }
+  // Medidor visual sin abrir el micro: sigue la actividad que informa el reconocedor
+  private startDecay() {
+    if (this.decay) return;
+    this.decay = setInterval(() => {
+      const jitter = this.target > 0.3 ? Math.random() * 0.25 : 0;
+      this.level = this.level * 0.7 + (this.target + jitter) * 0.3;
+      if (this.target > 0.4) this.target *= 0.9;
+    }, 60);
   }
 
-  private stopMeter() {
-    cancelAnimationFrame(this.raf);
-    if (this.stream) {
-      this.stream.getTracks().forEach((t) => t.stop());
-      try {
-        (this.stream as any)._ac?.close();
-      } catch {}
-    }
-    this.stream = null;
+  private stopDecay() {
+    if (this.decay) clearInterval(this.decay);
+    this.decay = null;
     this.level = 0;
   }
 }
 
 export const voice = new Recognizer();
+
+// En iPhone el reconocedor puede pararse (p. ej. tras hablar el narrador) y Safari
+// solo deja reactivarlo con un toque: cualquier toque en la pantalla lo reactiva.
+if (typeof document !== 'undefined') {
+  document.addEventListener(
+    'pointerdown',
+    () => {
+      if (voice.state === 'tap' || voice.state === 'off') voice.resumeIfWanted();
+    },
+    true,
+  );
+}
+
+/** Texto de diagnóstico para mostrar en la prueba de voz. */
+export function voiceDiagnostics(): string {
+  const ua = navigator.userAgent;
+  const browser = /CriOS/.test(ua)
+    ? 'Chrome iOS'
+    : /FxiOS/.test(ua)
+      ? 'Firefox iOS'
+      : isIOS
+        ? 'Safari iOS'
+        : /SamsungBrowser/.test(ua)
+          ? 'Samsung Internet'
+          : /Chrome/.test(ua)
+            ? 'Chrome'
+            : /Firefox/.test(ua)
+              ? 'Firefox'
+              : 'otro';
+  return [
+    browser,
+    isStandalone ? 'app instalada' : 'navegador',
+    speechSupported ? 'voz: sí' : 'voz: no',
+    `estado: ${voice.state}`,
+    voice.lastError ? `error: ${voice.lastError}` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}

@@ -158,9 +158,9 @@ class App {
 
   /** Pulsar ¡Listo!: primera vez pasa por la prueba de voz */
   ready(on: boolean) {
-    this.unlock();
-    // El micro se arranca dentro del toque (iOS lo exige)
+    // El micro se arranca lo primero dentro del toque (Safari lo exige)
     if (on) voice.start();
+    this.unlock();
     if (on && !this.prefs.voiceTested) {
       this.voiceTestThen = () => this.session?.send({ t: 'ready', ready: true });
       this.screen = 'voicetest';

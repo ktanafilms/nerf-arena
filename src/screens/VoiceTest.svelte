@@ -1,12 +1,11 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
   import { app } from '../lib/app.svelte';
-  import { voice, speechSupported } from '../lib/voice/recognizer.svelte';
+  import { voice, speechSupported, voiceDiagnostics } from '../lib/voice/recognizer.svelte';
   import { ALL_COMMANDS, learnAlias, normalize } from '../lib/voice/matcher';
   import { callsignOf } from '../lib/types';
   import { sfx, vibrate } from '../lib/audio/sfx';
   import { say } from '../lib/audio/narrator';
-  import { isIOS, isStandalone } from '../lib/device';
 
   const profile = app.prefs.profile!;
   const name = app.me?.name ?? profile.name;
@@ -51,7 +50,8 @@
     voice.onFinal = null;
   });
 
-  if (voice.state === 'off') voice.start();
+  const needsTap = $derived(voice.state === 'off' || voice.state === 'tap');
+  const blocked = $derived(voice.state === 'denied' || voice.state === 'unavailable' || voice.state === 'unsupported');
 </script>
 
 <div class="screen vt">
@@ -60,7 +60,7 @@
   </div>
 
   <div class="mid">
-    <div class="meter" class:ok>
+    <div class="meter" class:ok class:idle={voice.state !== 'listening'}>
       {#each Array(12) as _, k}
         <i style="height:{8 + Math.max(0, Math.min(1, voice.level * 1.6 - k / 14)) * 90}px"></i>
       {/each}
@@ -69,30 +69,35 @@
     {#if !speechSupported}
       <h1 class="display">Este navegador no reconoce voz</h1>
       <p class="body">Puedes jugar igual: doble toque = tocado, mantener pulsado = anular.</p>
-    {:else if voice.state === 'denied'}
-      <h1 class="display">Micrófono bloqueado</h1>
-      <p class="body">{voice.errorMsg} Revisa los permisos del navegador y vuelve a intentarlo.</p>
+    {:else if blocked}
+      <h1 class="display">{voice.state === 'denied' ? 'Micro bloqueado' : 'Voz no disponible'}</h1>
+      <p class="body">{voice.errorMsg}</p>
+      <button class="btn small" onclick={() => voice.start()}>Reintentar</button>
     {:else if ok}
       <h1 class="display good">Te oigo</h1>
       {#if learned}
         <p class="body">Tu móvil escribe tu nombre como «{learned}». Lo he aprendido para reconocerte mejor.</p>
       {/if}
+    {:else if needsTap}
+      <h1 class="display">Activa el micro</h1>
+      <p class="body">{voice.errorMsg ?? 'Safari pide que lo actives con un toque. Si te pregunta, pulsa «Permitir».'}</p>
+      <button class="btn" onclick={() => voice.start()}>Activar micro</button>
     {:else}
-      <span class="eyebrow">Di en voz alta</span>
+      <span class="eyebrow">{voice.state === 'starting' ? 'Arrancando…' : 'Di en voz alta'}</span>
       <h1 class="display say">{name},<br />estado</h1>
       <p class="heard">
         {#if voice.heard}«{voice.heard.text}»{:else}Escuchando…{/if}
       </p>
-      {#if isIOS && isStandalone}
-        <p class="body small">Si en iPhone no te oye desde la app instalada, ábrela en Safari.</p>
-      {/if}
       {#if voice.errorMsg}<p class="body small warn">{voice.errorMsg}</p>{/if}
     {/if}
   </div>
 
-  <button class="btn ghost" onclick={() => app.voiceTestDone(false)}>
-    {speechSupported && voice.state !== 'denied' ? 'Saltar' : 'Seguir sin voz'}
-  </button>
+  <div class="foot">
+    <p class="diag">{voiceDiagnostics()}</p>
+    <button class="btn ghost" onclick={() => app.voiceTestDone(false)}>
+      {speechSupported && !blocked ? 'Saltar' : 'Seguir sin voz'}
+    </button>
+  </div>
 </div>
 
 <style>
@@ -116,6 +121,9 @@
     background: var(--me);
     transform: skewX(-12deg);
     transition: height 0.08s linear;
+  }
+  .meter.idle i {
+    background: var(--bg-3);
   }
   .meter.ok i {
     background: var(--ok);
@@ -142,5 +150,20 @@
   }
   .warn {
     color: var(--warn);
+  }
+  .mid .btn {
+    align-self: flex-start;
+    width: auto;
+  }
+  .foot {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .diag {
+    margin: 0;
+    font-size: 11px;
+    color: var(--mute);
+    opacity: 0.7;
   }
 </style>

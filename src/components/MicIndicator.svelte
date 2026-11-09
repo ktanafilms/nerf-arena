@@ -10,7 +10,7 @@
   });
   const recent = $derived(voice.heard && now - voice.heard.at < 2500 ? voice.heard : null);
   const live = $derived(voice.state === 'listening');
-  const bad = $derived(voice.state === 'denied' || voice.state === 'unsupported');
+  const bad = $derived(voice.state === 'denied' || voice.state === 'unsupported' || voice.state === 'unavailable');
 </script>
 
 <div class="mic" class:live class:bad>
@@ -19,8 +19,10 @@
   </span>
   {#if bad}
     <span class="st">Sin micro</span>
+  {:else if voice.state === 'tap'}
+    <span class="st">Toca para activar el micro</span>
   {:else if !live}
-    <span class="st">Micro apagado</span>
+    <span class="st">{voice.state === 'starting' ? 'Micro…' : 'Micro apagado'}</span>
   {/if}
   {#if showText && recent}
     <span class="heard" class:cmd={recent.cmd}>
