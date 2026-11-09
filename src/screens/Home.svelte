@@ -1,7 +1,8 @@
 <script lang="ts">
   import { app } from '../lib/app.svelte';
   import { HostSession } from '../lib/net/session.svelte';
-  import Wordmark from '../components/Wordmark.svelte';
+  import Hero from '../components/Hero.svelte';
+  import { colorHex } from '../lib/types';
   import Avatar from '../components/Avatar.svelte';
 
   const saved = HostSession.savedRoom();
@@ -9,11 +10,9 @@
 </script>
 
 <div class="screen home">
-  <div class="slab">
-    <div class="slabin"><Wordmark size={1.25} /></div>
+  <div class="top">
+    <Hero color={colorHex(p?.color ?? 'naranja')} />
   </div>
-
-  <div class="top"></div>
 
   <div class="bottom stagger">
     {#if p}
@@ -43,41 +42,15 @@
     justify-content: space-between;
     overflow: hidden;
   }
-  /* Bloque de color diagonal que atraviesa la pantalla */
-  .slab {
-    position: absolute;
-    left: -30%;
-    right: -30%;
-    top: 16%;
-    height: 290px;
-    background: var(--me);
-    color: var(--me-ink);
-    transform: rotate(-9deg);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    animation: slab-in 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  }
-  .slabin {
-    animation: screen-in 0.5s 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  }
-  .slabin :global(.l2) {
-    color: var(--me-ink);
-  }
-  .slabin :global(.l2 i) {
-    background: var(--me-ink);
-  }
-  @keyframes slab-in {
-    from {
-      transform: rotate(-9deg) translateX(-100%);
-    }
-  }
   .top,
   .bottom {
     position: relative;
   }
   .top {
-    padding-top: 8px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
   }
   .bottom {
     display: flex;
