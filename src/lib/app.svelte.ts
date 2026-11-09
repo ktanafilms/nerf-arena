@@ -84,7 +84,15 @@ class App {
   }
 
   /** Desbloquea audio y voz: llamar en un toque */
+  private unlocked = false;
   unlock() {
+    // Solo la primera vez: en iPhone, arrancar audio o voz sintética en el mismo
+    // toque que el micro corta el reconocimiento de voz.
+    if (this.unlocked) {
+      unlockAudio(); // solo reanuda si estaba suspendido
+      return;
+    }
+    this.unlocked = true;
     unlockAudio();
     unlockSpeech();
   }
@@ -164,7 +172,7 @@ class App {
   ready(on: boolean) {
     // El micro se arranca lo primero dentro del toque (Safari lo exige)
     if (on) voice.start();
-    this.unlock();
+    else this.unlock();
     if (on && !this.prefs.voiceTested) {
       this.voiceTestThen = () => this.session?.send({ t: 'ready', ready: true });
       this.screen = 'voicetest';

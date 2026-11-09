@@ -11,88 +11,163 @@
 
 <div class="screen home">
   <div class="top">
-    <Hero color={colorHex(p?.color ?? 'naranja')} />
+    {#if p}
+      <button class="me" onclick={() => app.editProfile()} aria-label="Editar perfil">
+        <Avatar icon={p.icon} color={p.color} size={36} />
+        <span class="nm">{p.name}</span>
+      </button>
+    {:else}
+      <span></span>
+    {/if}
+    <button class="help" onclick={() => (app.screen = 'guide')} aria-label="Cómo se juega">?</button>
   </div>
 
-  <div class="bottom stagger">
-    {#if p}
-      <button class="me" onclick={() => app.editProfile()}>
-        <Avatar icon={p.icon} color={p.color} size={52} />
-        <span class="who">
-          <span class="eyebrow">Jugador</span>
-          <span class="nm">{p.name}</span>
-        </span>
-        <span class="edit">Editar</span>
+  <Hero color={colorHex(p?.color ?? 'naranja')} />
+
+  <div class="menu">
+    {#if saved}
+      <button class="item small" onclick={() => app.create()}>
+        <span>Volver a la sala <b class="num">{saved.code}</b></span><i>›</i>
       </button>
     {/if}
-    {#if saved}
-      <button class="btn ghost small" onclick={() => app.create()}>Volver a la sala {saved.code}</button>
-    {/if}
-    <button class="btn" onclick={() => (saved ? app.createFresh() : app.create())}>Crear partida</button>
-    <button class="btn ghost" onclick={() => (app.screen = 'join')}>Unirse</button>
-    <div class="links">
-      <button class="link" onclick={() => app.solo()}>Probar con un rival simulado</button>
-      <button class="link" onclick={() => (app.screen = 'guide')}>Cómo se juega</button>
-    </div>
+    <button class="item primary" onclick={() => (saved ? app.createFresh() : app.create())}>
+      <span>Crear partida</span><i>›</i>
+    </button>
+    <button class="item" onclick={() => (app.screen = 'join')}>
+      <span>Unirse</span><i>›</i>
+    </button>
+    <button class="practice" onclick={() => app.solo()}>Practicar con rival simulado</button>
   </div>
 </div>
 
 <style>
   .home {
-    justify-content: space-between;
-    overflow: hidden;
-  }
-  .top,
-  .bottom {
-    position: relative;
+    gap: 6px;
   }
   .top {
-    flex: 1;
-    min-height: 0;
     display: flex;
-    flex-direction: column;
-    margin-bottom: 10px;
-  }
-  .bottom {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    width: 100%;
-    max-width: 460px;
-    margin: 0 auto;
+    justify-content: space-between;
+    align-items: center;
+    position: relative;
+    z-index: 2;
+    animation: fade 0.5s 0.3s both;
   }
   .me {
     appearance: none;
     border: none;
-    background: var(--bg-2);
+    background: rgba(255, 255, 255, 0.06);
     color: var(--paper);
     display: flex;
     align-items: center;
-    gap: 14px;
-    padding: 10px 14px 10px 10px;
-    border-radius: 4px;
-    margin-bottom: 6px;
-    text-align: left;
-  }
-  .who {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
+    gap: 10px;
+    padding: 4px 14px 4px 4px;
+    border-radius: 6px;
   }
   .nm {
     font-family: var(--display);
     font-weight: 900;
-    font-size: 30px;
+    font-size: 22px;
     text-transform: uppercase;
-    line-height: 0.95;
+    line-height: 1;
   }
-  .edit {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--mute);
+  .help {
+    appearance: none;
+    border: 2px solid rgba(255, 255, 255, 0.18);
+    background: none;
+    color: var(--paper);
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    font-family: var(--display);
+    font-weight: 900;
+    font-size: 20px;
   }
-  .links {
+  .menu {
     display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    max-width: 460px;
+    margin: 0 auto;
+  }
+  /* Botón de menú de juego: corte diagonal, flecha a la derecha */
+  .item {
+    appearance: none;
+    border: none;
+    position: relative;
+    height: clamp(56px, 8.6vh, 70px);
+    padding: 0 22px;
+    display: flex;
+    align-items: center;
     justify-content: space-between;
+    background: var(--bg-2);
+    color: var(--paper);
+    font-family: var(--display);
+    font-weight: 900;
+    font-size: clamp(26px, 4.2vh, 32px);
+    text-transform: uppercase;
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%);
+    box-shadow: inset 4px 0 0 var(--me);
+    animation: slide 0.4s cubic-bezier(0.2, 0.9, 0.2, 1) both;
+    transition: transform 0.08s;
+  }
+  .item:nth-child(1) {
+    animation-delay: 0.35s;
+  }
+  .item:nth-child(2) {
+    animation-delay: 0.42s;
+  }
+  .item:nth-child(3) {
+    animation-delay: 0.49s;
+  }
+  .item i {
+    font-style: normal;
+    font-size: 1.3em;
+    line-height: 1;
+    color: var(--me);
+    transition: transform 0.15s;
+  }
+  .item:active {
+    transform: scale(0.98);
+  }
+  .item:active i {
+    transform: translateX(4px);
+  }
+  .item.primary {
+    background: var(--me);
+    color: var(--me-ink);
+    box-shadow: none;
+  }
+  .item.primary i {
+    color: var(--me-ink);
+  }
+  .item.small {
+    height: 48px;
+    font-size: 20px;
+  }
+  .item.small b {
+    color: var(--me);
+  }
+  .practice {
+    appearance: none;
+    border: none;
+    background: none;
+    color: var(--mute);
+    font-family: var(--body);
+    font-weight: 600;
+    font-size: 14px;
+    padding: 8px 0 0;
+    animation: fade 0.5s 0.6s both;
+  }
+  @keyframes slide {
+    from {
+      opacity: 0;
+      transform: translateX(-30px);
+    }
+  }
+  @keyframes fade {
+    from {
+      opacity: 0;
+    }
   }
 </style>

@@ -1,5 +1,6 @@
-// Escena 3D de la portada: la pistola flota y gira suavemente; se puede girar con el dedo.
-// Carga public/models/blaster.glb si existe; si no, usa una pistola de juguete hecha con primitivas.
+// Escena 3D de la portada: la pistola aparece girando sobre un pedestal holográfico,
+// luego rota despacio como en un escaparate. Se puede girar con el dedo (con inercia).
+// Carga public/models/blaster.glb; si falla, usa una pistola de juguete hecha con primitivas.
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -11,33 +12,40 @@ export interface Hero3D {
 
 export const MODEL_URL = './models/blaster.glb';
 
+const AUTO_SPIN = 0.35; // rad/s en reposo
+const easeOutBack = (x: number) => 1 + 2.2 * Math.pow(x - 1, 3) + 1.2 * Math.pow(x - 1, 2);
+const easeOut = (x: number) => 1 - Math.pow(1 - x, 3);
+
 export function mountHero3D(canvas: HTMLCanvasElement, color: string, onModel?: (real: boolean) => void): Hero3D {
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 1.1;
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(28, 1, 0.1, 100);
-  camera.position.set(0, 1.4, 9);
-  camera.lookAt(0, -0.25, 0);
+  const camera = new THREE.PerspectiveCamera(26, 1, 0.1, 100);
+  const target = new THREE.Vector3(0, -0.35, 0);
 
-  // Luces: clave blanca, contraluz del color del jugador y relleno suave
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x222222, 1.1));
-  const key = new THREE.DirectionalLight(0xffffff, 2.6);
-  key.position.set(-3, 4, 5);
+  // Luces: clave cálida, contraluz del color del jugador y relleno frío suave
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x1a1a1a, 1.0));
+  const key = new THREE.DirectionalLight(0xfff4e8, 2.8);
+  key.position.set(-3, 5, 5);
   scene.add(key);
-  const rim = new THREE.DirectionalLight(new THREE.Color(color), 4);
-  rim.position.set(4, 1.5, -4);
+  const rim = new THREE.DirectionalLight(new THREE.Color(color), 5);
+  rim.position.set(3, 2, -5);
   scene.add(rim);
-  const fill = new THREE.DirectionalLight(0xffffff, 0.6);
-  fill.position.set(3, -2, 4);
+  const fill = new THREE.DirectionalLight(0xdfe8ff, 0.7);
+  fill.position.set(4, -1, 4);
   scene.add(fill);
+  const under = new THREE.PointLight(new THREE.Color(color), 6, 6, 1.6); // reflejo del pedestal
+  under.position.set(0, -1.1, 0.6);
+  scene.add(under);
 
-  // Pedestal holográfico del color del jugador
+  // ── Pedestal holográfico ──
   const holo = new THREE.Group();
-  holo.position.y = -1.25;
+  holo.position.y = -1.3;
   scene.add(holo);
   const holoMats: THREE.MeshBasicMaterial[] = [];
   const hm = (opacity: number, map?: THREE.Texture) => {
@@ -53,59 +61,61 @@ export function mountHero3D(canvas: HTMLCanvasElement, color: string, onModel?: 
     holoMats.push(m);
     return m;
   };
-  const radial = (() => {
+  const tex = (w: number, h: number, paint: (x: CanvasRenderingContext2D) => void) => {
     const c = document.createElement('canvas');
-    c.width = c.height = 128;
-    const x = c.getContext('2d')!;
-    const g = x.createRadialGradient(64, 64, 0, 64, 64, 64);
-    g.addColorStop(0, 'rgba(255,255,255,0.9)');
-    g.addColorStop(0.55, 'rgba(255,255,255,0.25)');
+    c.width = w;
+    c.height = h;
+    paint(c.getContext('2d')!);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  };
+  const radial = tex(256, 256, (x) => {
+    const g = x.createRadialGradient(128, 128, 0, 128, 128, 128);
+    g.addColorStop(0, 'rgba(255,255,255,0.85)');
+    g.addColorStop(0.45, 'rgba(255,255,255,0.22)');
     g.addColorStop(1, 'rgba(255,255,255,0)');
     x.fillStyle = g;
-    x.fillRect(0, 0, 128, 128);
-    return new THREE.CanvasTexture(c);
-  })();
-  const vertical = (() => {
-    const c = document.createElement('canvas');
-    c.width = 4;
-    c.height = 128;
-    const x = c.getContext('2d')!;
+    x.fillRect(0, 0, 256, 256);
+  });
+  const vertical = tex(4, 128, (x) => {
     const g = x.createLinearGradient(0, 128, 0, 0);
-    g.addColorStop(0, 'rgba(255,255,255,0.8)');
+    g.addColorStop(0, 'rgba(255,255,255,0.7)');
     g.addColorStop(1, 'rgba(255,255,255,0)');
     x.fillStyle = g;
     x.fillRect(0, 0, 4, 128);
-    return new THREE.CanvasTexture(c);
-  })();
-  const flat = (geo: THREE.BufferGeometry, mat: THREE.Material) => {
+  });
+  const flat = (geo: THREE.BufferGeometry, mat: THREE.Material, parent: THREE.Object3D = holo) => {
     const m = new THREE.Mesh(geo, mat);
     m.rotation.x = -Math.PI / 2;
-    holo.add(m);
+    parent.add(m);
     return m;
   };
-  flat(new THREE.CircleGeometry(2.3, 64), hm(0.55, radial));
-  flat(new THREE.RingGeometry(1.55, 1.62, 96), hm(0.95));
+  flat(new THREE.CircleGeometry(2.6, 64), hm(0.5, radial));
+  const ring = flat(new THREE.RingGeometry(1.5, 1.56, 128), hm(0.95));
+  const inner = flat(new THREE.RingGeometry(1.0, 1.02, 96), hm(0.35));
   const dashes = new THREE.Group();
-  for (let i = 0; i < 36; i++) {
-    const a = (i / 36) * Math.PI * 2;
-    const d = new THREE.Mesh(new THREE.RingGeometry(1.86, 1.94, 4, 1, a, (Math.PI * 2) / 36 * 0.55), hm(0.7));
-    dashes.add(d);
+  const DASH = 48;
+  for (let i = 0; i < DASH; i++) {
+    const a = (i / DASH) * Math.PI * 2;
+    dashes.add(new THREE.Mesh(new THREE.RingGeometry(1.78, 1.84, 3, 1, a, ((Math.PI * 2) / DASH) * 0.5), hm(0.6)));
   }
   dashes.rotation.x = -Math.PI / 2;
   holo.add(dashes);
-  const beam = new THREE.Mesh(new THREE.CylinderGeometry(1.55, 1.55, 1.6, 64, 1, true), hm(0.22, vertical));
-  beam.position.y = 0.8;
+  const beamMat = hm(0.16, vertical);
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 1.4, 96, 1, true), beamMat);
+  beam.position.y = 0.7;
   holo.add(beam);
 
-  const pivot = new THREE.Group(); // gira con el dedo
+  // ── Modelo ──
+  const pivot = new THREE.Group(); // gira (auto + dedo)
   const floater = new THREE.Group(); // flota
   pivot.add(floater);
   scene.add(pivot);
-
   let model: THREE.Object3D | null = null;
+  let appearAt = -1; // segundo en que empezó a aparecer
 
   function place(obj: THREE.Object3D) {
-    // Centrar y escalar para que mida ~3.4 unidades de largo
     const box = new THREE.Box3().setFromObject(obj);
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
@@ -113,61 +123,59 @@ export function mountHero3D(canvas: HTMLCanvasElement, color: string, onModel?: 
     const wrap = new THREE.Group();
     wrap.add(obj);
     const longest = Math.max(size.x, size.y, size.z) || 1;
-    wrap.scale.setScalar(3.4 / longest);
-    // Si el eje largo es Z, girar para verlo de perfil
+    wrap.scale.setScalar(3.2 / longest);
     if (size.z > size.x) wrap.rotation.y = Math.PI / 2;
-    if (model) floater.remove(model);
     model = wrap;
     floater.add(wrap);
+    floater.scale.setScalar(0.001);
+    appearAt = clock.elapsedTime;
   }
 
-  place(buildToy(color));
   new GLTFLoader().load(
     MODEL_URL,
     (gltf) => {
-      gltf.scene.traverse((o) => {
-        const m = o as THREE.Mesh;
-        if (m.isMesh && m.material) {
-          const mats = Array.isArray(m.material) ? m.material : [m.material];
-          mats.forEach((mat) => ((mat as THREE.MeshStandardMaterial).envMapIntensity = 1));
-        }
-      });
       place(gltf.scene);
       onModel?.(true);
     },
     undefined,
-    () => onModel?.(false),
+    () => {
+      place(buildToy(color));
+      onModel?.(false);
+    },
   );
 
-  // Interacción: arrastrar para girar, con inercia
-  let yaw = -0.35,
-    pitch = 0.08,
-    vel = 0,
+  // ── Interacción: arrastrar para girar, con inercia que vuelve al giro automático ──
+  let yaw = -0.6,
+    pitch = 0,
+    vel = AUTO_SPIN,
     dragging = false,
     lastX = 0,
     lastY = 0,
-    idle = 0;
+    lastT = 0;
   const onDown = (e: PointerEvent) => {
     dragging = true;
     lastX = e.clientX;
     lastY = e.clientY;
-    vel = 0;
+    lastT = performance.now();
   };
   const onMove = (e: PointerEvent) => {
     if (!dragging) return;
+    const now = performance.now();
+    const dt = Math.max(1, now - lastT) / 1000;
     const dx = e.clientX - lastX;
     const dy = e.clientY - lastY;
+    yaw += dx * 0.012;
+    vel = Math.max(-8, Math.min(8, (dx * 0.012) / dt));
+    pitch = Math.max(-0.35, Math.min(0.45, pitch + dy * 0.005));
     lastX = e.clientX;
     lastY = e.clientY;
-    vel = dx * 0.012;
-    yaw += vel;
-    pitch = Math.max(-0.5, Math.min(0.6, pitch + dy * 0.006));
-    idle = 0;
+    lastT = now;
   };
   const onUp = () => (dragging = false);
   canvas.addEventListener('pointerdown', onDown);
   window.addEventListener('pointermove', onMove);
   window.addEventListener('pointerup', onUp);
+  window.addEventListener('pointercancel', onUp);
 
   function resize() {
     const w = canvas.clientWidth,
@@ -175,38 +183,45 @@ export function mountHero3D(canvas: HTMLCanvasElement, color: string, onModel?: 
     if (!w || !h) return;
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
-    // En vertical, alejar la cámara para que quepa el ancho
-    camera.position.z = w / h < 0.8 ? 10.5 : 8.5;
+    // Encajar: más lejos cuanto más estrecha sea la vista
+    const dist = Math.max(8, 7.2 / Math.min(1, camera.aspect));
+    camera.position.set(0, 1.5, dist);
+    camera.lookAt(target);
     camera.updateProjectionMatrix();
   }
   const ro = new ResizeObserver(resize);
   ro.observe(canvas);
-  resize();
 
   const clock = new THREE.Clock();
+  resize();
   let raf = 0;
-  // Con «reducir movimiento» la pistola aparece ya colocada
-  const intro = { t: matchMedia('(prefers-reduced-motion: reduce)').matches ? 1 : 0 };
   function frame() {
     const dt = Math.min(clock.getDelta(), 0.05);
     const t = clock.elapsedTime;
-    intro.t = Math.min(1, intro.t + dt / 1.1);
-    const e = 1 - Math.pow(1 - intro.t, 3); // ease-out
-    if (!dragging) {
-      vel *= 0.94;
-      yaw += vel;
-      idle += dt;
-      // vuelve poco a poco a un balanceo suave
-      if (idle > 1.5) yaw += (Math.sin(t * 0.5) * 0.45 - 0.35 - yaw) * 0.01;
-      pitch += (0.08 - pitch) * 0.02;
+
+    // Pedestal: se despliega al abrir
+    const p = reduced ? 1 : easeOut(Math.min(1, t / 0.7));
+    holo.scale.setScalar(0.4 + 0.6 * p);
+    holoMats.forEach((m) => (m.userData.k = p));
+    dashes.rotation.z = t * 0.3;
+    inner.rotation.z = -t * 0.5;
+    beamMat.opacity = (0.12 + Math.sin(t * 2.4) * 0.04) * p;
+    (ring.material as THREE.MeshBasicMaterial).opacity = 0.75 + Math.sin(t * 3) * 0.2;
+
+    // Modelo: aparece girando y luego rota solo
+    if (model && appearAt >= 0) {
+      const a = reduced ? 1 : Math.min(1, (t - appearAt) / 1.1);
+      floater.scale.setScalar(Math.max(0.001, easeOutBack(a)));
+      if (!dragging) {
+        vel += (AUTO_SPIN - vel) * Math.min(1, dt * 1.5);
+        yaw += vel * dt;
+        pitch += (0 - pitch) * Math.min(1, dt * 2);
+      }
+      const spinIn = reduced ? 0 : (1 - easeOut(a)) * Math.PI * 1.5;
+      pivot.rotation.set(pitch, yaw + spinIn, 0);
+      floater.position.y = Math.sin(t * 1.2) * 0.07 + (1 - easeOut(a)) * -0.5;
+      floater.rotation.z = Math.sin(t * 0.8) * 0.03;
     }
-    pivot.rotation.set(pitch, yaw + (1 - e) * 2.6, 0);
-    pivot.position.x = (1 - e) * 6;
-    floater.position.y = Math.sin(t * 1.3) * 0.08;
-    floater.rotation.z = Math.sin(t * 0.9) * 0.04 - 0.08;
-    dashes.rotation.z = t * 0.35;
-    holo.position.x = pivot.position.x;
-    beam.material.opacity = 0.18 + Math.sin(t * 2.2) * 0.05;
     renderer.render(scene, camera);
     raf = requestAnimationFrame(frame);
   }
@@ -215,6 +230,7 @@ export function mountHero3D(canvas: HTMLCanvasElement, color: string, onModel?: 
   return {
     setColor(hex: string) {
       rim.color.set(hex);
+      under.color.set(hex);
       holoMats.forEach((m) => m.color.set(hex));
     },
     dispose() {
@@ -223,12 +239,16 @@ export function mountHero3D(canvas: HTMLCanvasElement, color: string, onModel?: 
       canvas.removeEventListener('pointerdown', onDown);
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
       scene.traverse((o) => {
         const m = o as THREE.Mesh;
         if (m.isMesh) {
           m.geometry?.dispose();
           const mats = Array.isArray(m.material) ? m.material : [m.material];
-          mats.forEach((mat) => mat?.dispose());
+          mats.forEach((mat) => {
+            Object.values(mat ?? {}).forEach((v) => (v as THREE.Texture)?.isTexture && (v as THREE.Texture).dispose());
+            mat?.dispose();
+          });
         }
       });
       renderer.dispose();

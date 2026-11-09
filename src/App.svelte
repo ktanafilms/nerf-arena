@@ -35,6 +35,14 @@
   if (!app.prefs.seenGuide) app.screen = 'guide';
   else if (pendingJoin) app.screen = 'join';
 
+  // El barrido de color solo entre pantallas, no al abrir la app
+  let first = $state(true);
+  $effect(() => {
+    void app.screen;
+    const t = setTimeout(() => (first = false), 50);
+    return () => clearTimeout(t);
+  });
+
   // Colores del jugador como variables CSS globales
   $effect(() => {
     const me = app.me ?? app.prefs.profile;
@@ -51,7 +59,7 @@
 
 
 {#key app.screen}
-  <div class="wipe"></div>
+  {#if !first}<div class="wipe"></div>{/if}
   <div class="enter" style="position:absolute;inset:0">
     {#if app.screen === 'home'}
       <Home />

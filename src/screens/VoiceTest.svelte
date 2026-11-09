@@ -93,7 +93,10 @@
   </div>
 
   <div class="foot">
-    <p class="diag">{voiceDiagnostics()}</p>
+    <div class="diag">
+      <b>{voiceDiagnostics()}</b>
+      {#each voice.log as l}<span>{l}</span>{/each}
+    </div>
     <button class="btn ghost" onclick={() => app.voiceTestDone(false)}>
       {speechSupported && !blocked ? 'Saltar' : 'Seguir sin voz'}
     </button>
@@ -161,9 +164,18 @@
     gap: 10px;
   }
   .diag {
-    margin: 0;
-    font-size: 11px;
+    display: flex;
+    flex-direction: column;
+    font-size: 10.5px;
+    line-height: 1.35;
     color: var(--mute);
-    opacity: 0.7;
+    max-height: 22vh;
+    overflow: hidden;
+    justify-content: flex-end;
+  }
+  .diag b {
+    font-weight: 700;
+    color: var(--paper);
+    opacity: 0.8;
   }
 </style>

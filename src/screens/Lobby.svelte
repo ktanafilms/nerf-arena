@@ -107,7 +107,6 @@
       onclick={() => {
         app.voiceTestThen = null;
         voice.start();
-        app.unlock();
         app.screen = 'voicetest';
       }}>Probar voz</button
     >

@@ -25,7 +25,9 @@ export function unlockAudio() {
       for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
     }
     if (ctx.state !== 'running') ctx.resume();
-    // Pulso silencioso para desbloquear iOS
+    if ((unlockAudio as any).done) return;
+    (unlockAudio as any).done = true;
+    // Pulso silencioso para desbloquear iOS (solo una vez)
     const o = ctx.createOscillator();
     const g = ctx.createGain();
     g.gain.value = 0;

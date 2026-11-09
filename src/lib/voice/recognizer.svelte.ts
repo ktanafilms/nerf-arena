@@ -40,6 +40,13 @@ class Recognizer {
   lastError = $state<string | null>(null); // código técnico, para diagnóstico
   level = $state(0); // 0..1 actividad de voz (estimada por los eventos del reconocedor)
   heard = $state<Heard | null>(null);
+  /** Registro de eventos (diagnóstico en la prueba de voz) */
+  log = $state<string[]>([]);
+  private t0 = Date.now();
+  private note(ev: string) {
+    const t = ((Date.now() - this.t0) / 1000).toFixed(1);
+    this.log = [...this.log.slice(-11), `${t}s ${ev}`];
+  }
 
   private rec: any = null;
   private wanted = false;
@@ -61,6 +68,7 @@ class Recognizer {
 
   /** Llamar SIEMPRE desde un toque del usuario (iOS lo exige). */
   start() {
+    this.note('start() ← toque');
     if (!SR) {
       this.state = 'unsupported';
       return;
@@ -114,18 +122,26 @@ class Recognizer {
     rec.maxAlternatives = 3;
     this.consumed.clear();
     rec.onstart = () => {
+      this.note('escuchando');
       this.state = 'listening';
       this.everListened = true;
       this.notAllowedStreak = 0;
       this.errorMsg = null;
     };
-    rec.onaudiostart = () => (this.target = 0.12);
+    rec.onaudiostart = () => {
+      this.note('audio abierto');
+      this.target = 0.12;
+    };
     rec.onsoundstart = () => (this.target = 0.35);
-    rec.onspeechstart = () => (this.target = 0.7);
+    rec.onspeechstart = () => {
+      this.note('voz detectada');
+      this.target = 0.7;
+    };
     rec.onspeechend = () => (this.target = 0.1);
     rec.onresult = (e: any) => this.onResult(e);
     rec.onerror = (e: any) => this.onError(e?.error ?? 'desconocido');
     rec.onend = () => {
+      this.note('fin');
       if (this.rec === rec) this.rec = null;
       this.target = 0;
       if (!this.wanted) return;
@@ -133,13 +149,17 @@ class Recognizer {
       // Reinicio automático (el modo continuo se corta solo tras silencios)
       const delay = Math.min(300 + this.failures * 600, 4000);
       this.restartTimer = setTimeout(() => {
-        if (this.wanted && !this.rec) this.boot();
+        if (this.wanted && !this.rec) {
+          this.note('reinicio automático');
+          this.boot();
+        }
       }, delay);
     };
     this.rec = rec;
     try {
       rec.start();
     } catch (err: any) {
+      this.note(`start falló: ${err?.name ?? err}`);
       this.rec = null;
       // InvalidStateError = ya estaba arrancado; cualquier otra cosa: pedir toque
       if (err?.name !== 'InvalidStateError') {
@@ -150,6 +170,7 @@ class Recognizer {
   }
 
   private async onError(err: string) {
+    this.note(`error: ${err}`);
     this.lastError = err;
     if (err === 'no-speech' || err === 'aborted') return; // normal: se reinicia solo
     if (err === 'network') {
@@ -194,6 +215,8 @@ class Recognizer {
   }
 
   private onResult(e: any) {
+    const last = e.results[e.results.length - 1];
+    if (last?.isFinal) this.note(`oído: «${(last[0]?.transcript ?? '').trim().slice(0, 30)}»`);
     if (this.state !== 'listening') this.state = 'listening';
     this.failures = 0;
     this.target = 1;
