@@ -34,7 +34,7 @@ Para probar en los móviles sin publicar hace falta HTTPS por el micrófono. Lo 
 
 ## Publicar gratis (GitHub Pages, con HTTPS)
 
-El repositorio incluye `.github/workflows/deploy.yml`: cada `git push` a `main` compila y publica en
+`npm run deploy` compila y sube la web a la rama `gh-pages`, que GitHub publica en
 `https://<usuario>.github.io/<repo>/`.
 
 ## Arquitectura
