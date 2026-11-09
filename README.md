@@ -1,0 +1,47 @@
+# Nerf Arena
+
+App árbitro para partidas de Nerf a 2 jugadores, con un móvil cada uno. Es una web instalable (PWA): se abre en Safari o Chrome, sin cuentas ni tiendas.
+
+## Cómo jugar
+
+1. Abrid la web en los dos móviles.
+2. Uno pulsa **Crear partida**. El otro escanea el QR con la cámara o escribe el código de 4 letras en **Unirse**.
+3. Elegid el modo, pulsad **¡Listo!** los dos y empieza la cuenta atrás.
+4. Durante la partida:
+   - Voz: «[tu indicativo], tocado / estado / pausa / seguir / anular».
+   - Plan B táctil: **doble toque** = tocado, **mantener pulsado** = anular. El botón de pausa siempre está visible.
+5. Para instalarla como app:
+   - **iPhone**: Safari › Compartir › Añadir a pantalla de inicio.
+   - **Android**: Chrome › menú › Instalar app.
+
+**Modo prueba**: «Probar en un solo móvil» crea un rival simulado (bot) con botones para que haga de segundo jugador.
+
+## Sincronizar con vuestras cámaras
+
+- En el **¡YA!** de cada partida, los dos móviles hacen a la vez un **destello blanco y un pitido fuerte** (la claqueta). En la edición, alinead el audio de las cámaras con ese pitido.
+- Al terminar, **Copiar tiempos** copia la línea de tiempo. Los tiempos son reales desde el ¡YA!, con las pausas incluidas, para que casen con el vídeo.
+- La esquina superior muestra **⏺ reloj de partida** con décimas, siempre visible en la grabación de pantalla.
+
+## Desarrollo
+
+```bash
+npm install
+npm run dev        # http://localhost:5173 (en el Mac)
+npm run build      # genera dist/
+```
+
+Para probar en los móviles sin publicar hace falta HTTPS por el micrófono. Lo más sencillo es publicar (ver abajo).
+
+## Publicar gratis (GitHub Pages, con HTTPS)
+
+El repositorio incluye `.github/workflows/deploy.yml`: cada `git push` a `main` compila y publica en
+`https://<usuario>.github.io/<repo>/`.
+
+## Arquitectura
+
+- **Svelte 5 + TypeScript + Vite**. La web es estática y no necesita servidor propio.
+- **WebRTC entre los móviles (PeerJS)**. El broker público gratuito de PeerJS solo se usa para que los móviles se encuentren; después la conexión es directa.
+  - El móvil que crea la sala hace de árbitro (`src/lib/engine/room.ts`). Valida las órdenes, descarta duplicados (pausa o seguir desde los dos móviles) y sincroniza los relojes con pings.
+  - Fuera de casa, si los dos usáis datos móviles y no conectan, que uno comparta internet al otro (punto de acceso).
+- **Voz**: Web Speech API (`src/lib/voice`). Solo cuenta el indicativo propio seguido de una orden. Lo que se oye mientras habla el narrador se descarta.
+- **Sonidos**: todos sintetizados con Web Audio (`src/lib/audio/sfx.ts`), sin archivos.
