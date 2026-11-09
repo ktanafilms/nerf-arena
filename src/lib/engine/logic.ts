@@ -12,6 +12,7 @@ export interface Core {
   push(e: Omit<GEvent, 'id' | 'gt' | 'at'>): GEvent;
   credit(shooter: string, victim: string): void;
   snapshot(): { m: any; stats: Game['stats'] };
+  /** Registra una acción anulable: `prev` es el estado justo antes; se llama ya con el estado nuevo. */
   addUndo(ev: GEvent, by: string, prev: { m: any; stats: Game['stats'] }, windowMs?: number): void;
   confirmEnd(o: Outcome, windowMs?: number): void;
   resolve(o: Outcome): void;
@@ -461,6 +462,7 @@ const blanco: ModeLogic = {
       const options = [1, 2, 3, 4, 5, 6].filter((n) => n !== m.bombCan);
       m.callNum = pick(options);
       m.callAt = c.now;
+      m.callGt = c.gt;
       m.sub = 'live';
       m.pending = null;
       c.push({ kind: 'call', value: m.callNum });
@@ -483,7 +485,8 @@ const blanco: ModeLogic = {
       }
       return true;
     }
-    if (m.sub === 'live' && !m.pending && c.now - m.callAt > 15000) {
+    // En tiempo de partida: una pausa no agota la lata cantada
+    if (m.sub === 'live' && !m.pending && c.gt - (m.callGt ?? c.gt) > 15000) {
       c.push({ kind: 'nocall', value: m.callNum });
       blancoNext(c);
       return true;

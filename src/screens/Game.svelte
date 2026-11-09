@@ -181,6 +181,21 @@
     holding = null;
   }
 
+  // Terminar la partida a medias (desde la pausa): pide un segundo toque
+  let endArmed = $state(false);
+  let endTimer: ReturnType<typeof setTimeout> | null = null;
+  function endGame() {
+    if (!endArmed) {
+      endArmed = true;
+      endTimer = setTimeout(() => (endArmed = false), 3000);
+      return;
+    }
+    if (endTimer) clearTimeout(endTimer);
+    endArmed = false;
+    s.send({ t: 'abandon' });
+  }
+  const offline = $derived(s.kind === 'guest' && s.status !== 'online');
+
   const bot = s instanceof SoloSession ? s : null;
   const info = $derived(modeInfo(g.mode));
   const mc = $derived(colorDef(me.color));
@@ -368,6 +383,14 @@
           {:else}
             <span class="say">Seguirá sola cuando vuelva la conexión.</span>
           {/if}
+          <div class="pexit">
+            {#if !offline}
+              <button class="link" class:armed={endArmed} onclick={endGame}>{endArmed ? 'Toca otra vez para terminarla' : 'Terminar partida'}</button>
+            {/if}
+            {#if !opp.connected || offline}
+              <button class="link" onclick={() => app.leave()}>Salir de la sala</button>
+            {/if}
+          </div>
         {/if}
       </div>
     {/if}
@@ -783,6 +806,14 @@
   .say {
     font-size: 14px;
     color: var(--mute);
+  }
+  .pexit {
+    display: flex;
+    gap: 22px;
+    margin-top: 8px;
+  }
+  .pexit .armed {
+    color: var(--danger);
   }
   .confirmbar {
     position: absolute;

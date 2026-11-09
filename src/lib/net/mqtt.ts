@@ -45,6 +45,7 @@ export class Mqtt {
   private ping: ReturnType<typeof setInterval> | null = null;
   private retry: ReturnType<typeof setTimeout> | null = null;
   private brokerIdx = 0;
+  private fails = 0;
   private closed = false;
   private buf = new Uint8Array(0);
   private pid = 1;
@@ -54,11 +55,13 @@ export class Mqtt {
   constructor(
     private clientId: string,
     private h: MqttHandlers,
+    /** Servidores a probar por turnos (uno solo = siempre el mismo) */
+    private brokers: string[] = BROKERS,
   ) {}
 
   connect() {
     if (this.closed) return;
-    const url = BROKERS[this.brokerIdx % BROKERS.length];
+    const url = this.brokers[this.brokerIdx % this.brokers.length];
     this.broker = url;
     this.h.onState('connecting', url);
     let ws: WebSocket;
@@ -92,7 +95,8 @@ export class Mqtt {
     this.h.onState('offline', this.broker);
     if (this.closed) return;
     this.brokerIdx++; // probar el siguiente servidor
-    this.retry = setTimeout(() => this.connect(), 1500);
+    this.fails++;
+    this.retry = setTimeout(() => this.connect(), Math.min(1500 * this.fails, 10000));
   }
 
   private feed(chunk: Uint8Array, giveUp: ReturnType<typeof setTimeout>) {
@@ -124,6 +128,7 @@ export class Mqtt {
           return;
         }
         this.online = true;
+        this.fails = 0;
         this.h.onState('online', this.broker);
         for (const t of this.subs) this.sendSub(t);
         this.ping = setInterval(() => this.ws?.readyState === 1 && this.ws.send(packet(12, 0, [])), 20000);
@@ -164,5 +169,75 @@ export class Mqtt {
     } catch {}
     this.ws = null;
     this.online = false;
+  }
+}
+
+/**
+ * Varios servidores a la vez. Cada móvil se conecta a todos y publica en todos los que
+ * tenga abiertos: así los dos coinciden siempre en alguno, aunque otro falle o tarde.
+ * (Con un solo servidor por móvil, cada uno podía acabar en uno distinto y no verse nunca.)
+ * Los mensajes repetidos que llegan por más de un servidor se entregan una sola vez.
+ */
+export class MqttPool {
+  private clients: Mqtt[];
+  private recent = new Map<string, number>();
+
+  constructor(clientId: string, private h: MqttHandlers, brokers: string[] = BROKERS) {
+    this.clients = brokers.map(
+      (url) =>
+        new Mqtt(
+          clientId,
+          {
+            onMessage: (topic, payload) => this.receive(topic, payload),
+            // Se avisa cuando un servidor se abre y, de los fallos, solo si no queda ninguno abierto
+            onState: (st) => {
+              if (st === 'online' || !this.online) this.h.onState(st, url);
+            },
+          },
+          [url],
+        ),
+    );
+  }
+
+  /** Servidores abiertos ahora mismo */
+  get count() {
+    return this.clients.filter((c) => c.online).length;
+  }
+  get total() {
+    return this.clients.length;
+  }
+  get online() {
+    return this.clients.some((c) => c.online);
+  }
+
+  private receive(topic: string, payload: string) {
+    const now = Date.now();
+    let h = 5381;
+    for (let i = 0; i < payload.length; i++) h = ((h << 5) + h + payload.charCodeAt(i)) | 0;
+    const key = `${topic}:${payload.length}:${h}`;
+    const seen = this.recent.get(key);
+    this.recent.set(key, now);
+    if (this.recent.size > 200) for (const [k, t] of this.recent) if (now - t > 5000) this.recent.delete(k);
+    if (seen !== undefined && now - seen < 5000) return; // ya llegó por otro servidor
+    this.h.onMessage(topic, payload);
+  }
+
+  subscribe(topic: string) {
+    for (const c of this.clients) c.subscribe(topic);
+  }
+
+  connect() {
+    for (const c of this.clients) c.connect();
+  }
+
+  /** Publica en todos los servidores abiertos. false si no hay ninguno. */
+  publish(topic: string, payload: string): boolean {
+    let sent = false;
+    for (const c of this.clients) if (c.publish(topic, payload)) sent = true;
+    return sent;
+  }
+
+  close() {
+    for (const c of this.clients) c.close();
   }
 }

@@ -147,6 +147,7 @@ export type Intent =
   | { t: 'config'; mode: ModeId; config: ModeConfig }
   | { t: 'ready'; ready: boolean }
   | { t: 'toLobby' }
+  | { t: 'abandon' } // terminar la partida en curso (solo en pausa)
   | { t: 'hit' } // "tocado": el emisor es la víctima
   | { t: 'undo' }
   | { t: 'pause' }

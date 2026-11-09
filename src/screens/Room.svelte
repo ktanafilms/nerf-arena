@@ -76,10 +76,12 @@
     if (room?.game?.phase === 'ended') history.save(room);
   });
 
-  // Apagar el micro fuera de la partida
+  // Apagar el micro fuera de la partida (también si se termina a medias)
+  let hadGame = false;
   $effect(() => {
     const g = room?.game;
-    if (!room || room.screen === 'lobby' || (g && g.phase === 'ended')) voice.stop();
+    if (!room || room.screen === 'lobby' || (g && g.phase === 'ended') || (hadGame && !g)) voice.stop();
+    hadGame = !!g;
   });
 </script>
 

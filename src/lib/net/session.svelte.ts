@@ -10,7 +10,7 @@
 import Peer, { type DataConnection } from 'peerjs';
 import type { GEvent, Intent, Profile, Room } from '../types';
 import { applyIntent, createRoom, ensureUndo, joinGuest, setConnected, tick } from '../engine/room';
-import { Mqtt } from './mqtt';
+import { MqttPool } from './mqtt';
 
 const PREFIX = 'nerfarena-v1-';
 const TOPIC = (code: string) => `nerfarena/v2/${code}`;
@@ -19,6 +19,10 @@ const HOST_SAVE = 'nerf.hostRoom';
 const HEARTBEAT_MS = 1000;
 const TIMEOUT_MS = 5000;
 const RELAY_FRESH_MS = 8000;
+// Órdenes sin acuse: se reenvían cada segundo hasta que caducan
+const RESEND_AFTER_MS = 900;
+const INTENT_TTL_MS = 4000; // jugadas: si tardan más, ya no valen
+const SETUP_TTL_MS = 30000; // perfil y «listo»: pueden esperar a que vuelva la conexión
 // Solo en desarrollo: ?nodirect desactiva la ruta directa para probar el respaldo
 const NO_DIRECT = import.meta.env.DEV && typeof location !== 'undefined' && location.search.includes('nodirect');
 
@@ -32,11 +36,12 @@ interface Have {
 }
 type GuestMsg =
   | { k: 'hello'; profile: Profile; clientId: string; have?: Have }
-  | { k: 'intent'; intent: Intent; have?: Have }
-  | { k: 'ping'; t0: number; have?: Have };
+  | { k: 'intent'; intent: Intent; n?: number; have?: Have } // n = número de orden (acuse y duplicados)
+  | { k: 'ping'; t0: number; rev?: number; have?: Have }; // rev = última versión de sala recibida
 type HostMsg =
   | { k: 'room'; room: Room; evs: GEvent[] | null; full: boolean }
   | { k: 'pong'; t0: number; th: number }
+  | { k: 'ack'; n: number }
   | { k: 'full' };
 
 export function randomCode(): string {
@@ -82,6 +87,12 @@ export abstract class Session {
   abstract leave(): void;
 }
 
+/** Estado del respaldo para el diagnóstico: cuántos servidores hay abiertos */
+function relayLabel(st: 'connecting' | 'online' | 'offline', pool: MqttPool): string {
+  if (st === 'online') return `lista (${pool.count} de ${pool.total} servidores)`;
+  return st === 'connecting' ? 'conectando' : 'caída';
+}
+
 /** Copia de la sala sin el historial de eventos (lo nuevo va aparte) */
 function stripEvents(r: Room): Room {
   if (!r.game) return r;
@@ -96,11 +107,12 @@ export class HostSession extends Session {
   protected r: Room;
   private peer: Peer | null = null;
   private conn: DataConnection | null = null;
-  private relay: Mqtt | null = null;
+  private relay: MqttPool | null = null;
   private guestClient: string | null = null;
   private lastGuestSeen = 0;
   private lastRelaySeen = 0;
   private guestHave: Have = { key: 0, id: 0 };
+  private seenIntents = new Set<number>();
   private timer: ReturnType<typeof setInterval> | null = null;
   private closed = false;
 
@@ -189,9 +201,9 @@ export class HostSession extends Session {
   // ── ruta de respaldo ──
   private openRelay() {
     const base = TOPIC(this.r.code);
-    const relay = new Mqtt(`nerf-h-${this.r.code}-${Math.random().toString(36).slice(2, 8)}`, {
+    const relay: MqttPool = new MqttPool(`nerf-h-${this.r.code}-${Math.random().toString(36).slice(2, 8)}`, {
       onState: (st) => {
-        this.diag = { ...this.diag, relay: st === 'online' ? 'lista' : st === 'connecting' ? 'conectando' : 'caída' };
+        this.diag = { ...this.diag, relay: relayLabel(st, relay) };
         if (st === 'online') {
           this.status = 'online';
           this.commit(true);
@@ -243,8 +255,17 @@ export class HostSession extends Session {
     if ('have' in msg && msg.have) this.guestHave = msg.have;
     const guest = this.r.players.find((p) => p.id === 'B');
     if (guest && !guest.connected && setConnected(this.r, 'B', true, Date.now())) this.commit();
-    if (msg.k === 'ping') reply({ k: 'pong', t0: msg.t0, th: Date.now() });
-    else if (msg.k === 'intent') {
+    if (msg.k === 'ping') {
+      reply({ k: 'pong', t0: msg.t0, th: Date.now() });
+      // Se le perdió algún mensaje (el respaldo no garantiza la entrega): reenviar la sala
+      if (msg.rev !== undefined && msg.rev < this.r.rev) reply(this.roomMsg(false));
+    } else if (msg.k === 'intent') {
+      if (msg.n !== undefined) {
+        reply({ k: 'ack', n: msg.n });
+        if (this.seenIntents.has(msg.n)) return; // reenvío de una orden ya aplicada
+        this.seenIntents.add(msg.n);
+        if (this.seenIntents.size > 400) this.seenIntents = new Set([...this.seenIntents].slice(-200));
+      }
       if (applyIntent(this.r, 'B', msg.intent, Date.now())) this.commit();
     }
   }
@@ -338,7 +359,7 @@ export class GuestSession extends Session {
   readonly kind = 'guest' as const;
   private peer: Peer | null = null;
   private conn: DataConnection | null = null;
-  private relay: Mqtt | null = null;
+  private relay: MqttPool | null = null;
   private offset = 0;
   private bestRtt = Infinity;
   private samples: { rtt: number; off: number }[] = [];
@@ -346,7 +367,9 @@ export class GuestSession extends Session {
   private hb: ReturnType<typeof setInterval> | null = null;
   private closed = false;
   private connecting = false;
-  private queue: Intent[] = [];
+  /** Órdenes enviadas que el host aún no ha confirmado */
+  private pending: { n: number; intent: Intent; at: number; sent: number }[] = [];
+  private seq = Date.now(); // creciente también entre recargas
   private startedAt = Date.now();
   private events: GEvent[] = [];
   private eventsKey = 0;
@@ -425,7 +448,7 @@ export class GuestSession extends Session {
       this.diag = { ...this.diag, direct: 'conectada' };
       c.send({ k: 'hello', profile: this.profile, clientId: this.cid, have: this.have() } satisfies GuestMsg);
       this.ping();
-      this.flushQueue();
+      this.resend(true);
     });
     c.on('data', (raw) => this.onHostMsg(raw as HostMsg, 'direct'));
     c.on('close', () => {
@@ -439,10 +462,13 @@ export class GuestSession extends Session {
   // ── ruta de respaldo ──
   private openRelay() {
     const base = TOPIC(this.code);
-    const relay = new Mqtt(`nerf-g-${this.code}-${this.cid.slice(0, 6)}-${Math.random().toString(36).slice(2, 6)}`, {
+    const relay: MqttPool = new MqttPool(`nerf-g-${this.code}-${this.cid.slice(0, 6)}-${Math.random().toString(36).slice(2, 6)}`, {
       onState: (st) => {
-        this.diag = { ...this.diag, relay: st === 'online' ? 'lista' : st === 'connecting' ? 'conectando' : 'caída' };
-        if (st === 'online') this.sendRelay({ k: 'hello', profile: this.profile, clientId: this.cid, have: this.have() });
+        this.diag = { ...this.diag, relay: relayLabel(st, relay) };
+        if (st === 'online') {
+          this.sendRelay({ k: 'hello', profile: this.profile, clientId: this.cid, have: this.have() });
+          this.resend(true);
+        }
       },
       onMessage: (_t, payload) => {
         let env: { c: string | null; m: HostMsg };
@@ -483,6 +509,8 @@ export class GuestSession extends Session {
       if (best.rtt <= this.bestRtt * 1.5 || this.samples.length < 3) this.offset = best.off;
       this.bestRtt = best.rtt;
       this.diag = { ...this.diag, rtt };
+    } else if (msg.k === 'ack') {
+      this.pending = this.pending.filter((p) => p.n !== msg.n);
     } else if (msg.k === 'full') {
       this.status = 'error';
       this.error = 'La sala ya tiene dos jugadores.';
@@ -514,7 +542,7 @@ export class GuestSession extends Session {
   }
 
   private ping() {
-    const m: GuestMsg = { k: 'ping', t0: Date.now(), have: this.have() };
+    const m: GuestMsg = { k: 'ping', t0: Date.now(), rev: this.lastRev, have: this.have() };
     if (this.conn?.open) this.conn.send(m);
     else this.sendRelay(m);
   }
@@ -522,6 +550,7 @@ export class GuestSession extends Session {
   private heartbeat() {
     if (this.closed) return;
     this.ping();
+    this.resend();
     const direct = !!this.conn?.open;
     const fresh = Date.now() - this.lastHostSeen < TIMEOUT_MS;
     this.route = direct ? 'direct' : fresh ? 'relay' : 'none';
@@ -543,14 +572,29 @@ export class GuestSession extends Session {
     if (!direct && !NO_DIRECT) this.connect();
   }
 
-  private flushQueue() {
-    for (const it of this.queue.splice(0)) this.send(it);
+  private transmit(p: { n: number; intent: Intent; sent: number }) {
+    const m: GuestMsg = { k: 'intent', intent: p.intent, n: p.n, have: this.have() };
+    p.sent = Date.now();
+    if (this.conn?.open) this.conn.send(m);
+    else this.sendRelay(m);
+  }
+
+  /** Reenvía lo que sigue sin acuse y descarta lo caducado */
+  private resend(now = false) {
+    const t = Date.now();
+    this.pending = this.pending.filter((p) => {
+      const setup = p.intent.t === 'profile' || p.intent.t === 'ready';
+      return t - p.at < (setup ? SETUP_TTL_MS : INTENT_TTL_MS);
+    });
+    for (const p of this.pending) if (now || t - p.sent >= RESEND_AFTER_MS) this.transmit(p);
   }
 
   send(intent: Intent) {
-    const m: GuestMsg = { k: 'intent', intent, have: this.have() };
-    if (this.conn?.open) this.conn.send(m);
-    else if (!this.sendRelay(m) && (intent.t === 'profile' || intent.t === 'ready')) this.queue.push(intent);
+    // Un perfil o un «listo» nuevo sustituye al anterior que siguiera pendiente
+    if (intent.t === 'profile' || intent.t === 'ready') this.pending = this.pending.filter((p) => p.intent.t !== intent.t);
+    const p = { n: ++this.seq, intent, at: Date.now(), sent: 0 };
+    this.pending.push(p);
+    this.transmit(p);
   }
 
   leave() {

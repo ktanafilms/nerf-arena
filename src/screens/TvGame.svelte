@@ -42,7 +42,22 @@
   const resumeN = $derived(g.phase === 'resuming' && g.resumeAt ? Math.max(1, Math.ceil((g.resumeAt - now) / 1000)) : 0);
   const interLeft = $derived(g.phase === 'intermission' && g.interUntil !== null ? Math.max(0, g.interUntil - gt) : 0);
   const confirmLeft = $derived(g.phase === 'finalizing' && g.finalizeAt ? Math.max(0, g.finalizeAt - now) : 0);
+  const confirmWindow = $derived(g.mode === 'duelo' && g.config.confirmedKill ? 10000 : 5000);
   const realClock = $derived(Math.max(0, now - g.startAt));
+
+  // Terminar la partida a medias (desde la pausa): pide un segundo toque
+  let endArmed = $state(false);
+  let endTimer: ReturnType<typeof setTimeout> | null = null;
+  function endGame() {
+    if (!endArmed) {
+      endArmed = true;
+      endTimer = setTimeout(() => (endArmed = false), 3000);
+      return;
+    }
+    if (endTimer) clearTimeout(endTimer);
+    endArmed = false;
+    s.send({ t: 'abandon' });
+  }
 
   // Cuenta atrás con pitidos
   let lastN = 0;
@@ -224,6 +239,7 @@
         {#if resumeN}{#key resumeN}<div class="big num">{resumeN}</div>{/key}{:else}
           <div class="ptitle">Pausa</div>
           <button class="btn" style="max-width:300px" onclick={() => onCommand('seguir')}>Seguir</button>
+          <button class="link" style={endArmed ? 'color:var(--danger)' : ''} onclick={endGame}>{endArmed ? 'Toca otra vez para terminarla' : 'Terminar partida'}</button>
         {/if}
       </div>
     {/if}
@@ -239,7 +255,7 @@
       </div>
     {/if}
     {#if g.phase === 'finalizing'}
-      <div class="confirm"><i style="width:{(confirmLeft / 5000) * 100}%"></i><span>{Math.ceil(confirmLeft / 1000)} s para anular</span></div>
+      <div class="confirm"><i style="width:{Math.min(100, (confirmLeft / confirmWindow) * 100)}%"></i><span>{Math.ceil(confirmLeft / 1000)} s para anular</span></div>
     {/if}
   </div>
 {/if}

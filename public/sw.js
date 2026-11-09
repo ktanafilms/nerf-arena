@@ -1,8 +1,41 @@
-// Service worker sencillo: red primero para la página, caché para los recursos.
-const CACHE = 'nerf-arena-v2';
+// Service worker: deja la app lista para abrirse sin conexión desde la primera visita.
+//  · Al instalarse guarda la página y sus recursos (la lista la escribe el build, ver vite.config.ts).
+//  · Página: red primero (para recibir versiones nuevas) y, sin red, la copia guardada.
+//  · Recursos: copia guardada primero; lo que no esté se guarda al pedirlo.
+const VERSION = '__SW_VERSION__';
+const PRECACHE = /*__SW_ASSETS__*/ [];
+const FILES = /*__SW_FILES__*/ []; // todos los archivos de esta versión
+const CACHE = 'nerf-arena-' + VERSION;
+// Recursos pesados que se descargan solo si se usan (motor de voz propio): sobreviven a las actualizaciones
+const LAZY = 'nerf-arena-lazy';
+// Las cabeceras Vary del servidor (Origin, Accept-Encoding) no deben impedir usar la copia guardada
+const ANY = { ignoreVary: true };
 
-self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
+self.addEventListener('install', (e) => {
+  e.waitUntil(
+    caches
+      .open(CACHE)
+      .then((c) => Promise.allSettled(PRECACHE.map((u) => c.add(new Request(u, { cache: 'reload' })))))
+      .then(() => self.skipWaiting()),
+  );
+});
+
+self.addEventListener('activate', (e) => {
+  e.waitUntil(
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.filter((k) => k.startsWith('nerf-arena-') && k !== CACHE && k !== LAZY).map((k) => caches.delete(k))))
+      // de lo descargado bajo demanda, quitar lo que ya no pertenece a esta versión
+      .then(() => caches.open(LAZY))
+      .then((c) =>
+        c.keys().then((reqs) => {
+          const keep = new Set(FILES.map((f) => new URL(f, self.registration.scope).href));
+          return Promise.all(reqs.filter((r) => FILES.length && !keep.has(r.url)).map((r) => c.delete(r)));
+        }),
+      )
+      .then(() => self.clients.claim()),
+  );
+});
 
 self.addEventListener('fetch', (e) => {
   const req = e.request;
@@ -14,22 +47,25 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(
       fetch(req)
         .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(req, copy));
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put('./', copy));
+          }
           return res;
         })
-        .catch(() => caches.match(req).then((r) => r || caches.match('./'))),
+        // sin red: la página guardada (también para enlaces con ?sala=…)
+        .catch(() => caches.match('./', ANY).then((r) => r || caches.match('index.html', ANY)).then((r) => r || Response.error())),
     );
     return;
   }
   e.respondWith(
-    caches.match(req).then(
+    caches.match(req, ANY).then(
       (hit) =>
         hit ||
         fetch(req).then((res) => {
           if (res.ok) {
             const copy = res.clone();
-            caches.open(CACHE).then((c) => c.put(req, copy));
+            caches.open(LAZY).then((c) => c.put(req, copy));
           }
           return res;
         }),

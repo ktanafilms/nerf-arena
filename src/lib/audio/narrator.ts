@@ -92,7 +92,9 @@ export function say(text: string, opts: { interrupt?: boolean; rate?: number } =
   speechSynthesis.speak(u);
 }
 
-export function numberWord(n: number): string {
+/** Número en palabras. Por defecto concuerda con «vidas/rondas» (una); `masc` para nivel, lata o puntos (uno). */
+export function numberWord(n: number, masc = false): string {
+  if (n === 1) return masc ? 'uno' : 'una';
   return ['cero', 'una', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve', 'diez'][n] ?? String(n);
 }
 

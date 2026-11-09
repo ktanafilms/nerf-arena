@@ -14,15 +14,56 @@ export const UNDO_MS = 5000;
 export const CONFIRM_MS = 10000;
 export const INTERMISSION_MS = 7000;
 
+type Snap = { m: any; stats: Game['stats'] };
+/** Un valor que cambió la acción: dónde, cuánto valía antes y cuánto después. */
+interface Change {
+  path: string[];
+  prev: any;
+  post: any;
+}
 interface UndoEntry {
   ref: number;
   by: string;
   until: number;
-  prev: { m: any; stats: Game['stats'] };
+  changes: Change[];
 }
 
 // Fuera del estado sincronizado: pila de deshacer y secretos del host (p. ej. la mecha oculta)
 const undoStacks = new WeakMap<Game, UndoEntry[]>();
+/** Evento que abrió la ventana de confirmación en curso (para que solo su anulación la cierre) */
+const finalRefs = new WeakMap<Game, number>();
+
+const isObj = (v: any) => v !== null && typeof v === 'object' && !Array.isArray(v);
+const same = (a: any, b: any) => JSON.stringify(a) === JSON.stringify(b);
+
+/** Lista de valores que difieren entre dos copias del estado. */
+function diff(prev: any, post: any, path: string[] = [], out: Change[] = []): Change[] {
+  if (isObj(prev) && isObj(post)) {
+    for (const k of new Set([...Object.keys(prev), ...Object.keys(post)])) diff(prev[k], post[k], [...path, k], out);
+  } else if (!same(prev, post)) out.push({ path, prev: structuredClone(prev), post: structuredClone(post) });
+  return out;
+}
+
+/**
+ * Deshace solo lo que cambió una acción, sin tocar lo que haya pasado después
+ * (el tocado del rival, un evento sorpresa…). Los contadores se corrigen por
+ * diferencia; el resto vuelve a su valor anterior si nadie lo ha cambiado desde entonces.
+ */
+function revert(state: Snap, changes: Change[]) {
+  for (const ch of changes) {
+    let o: any = state;
+    for (const k of ch.path.slice(0, -1)) o = o?.[k];
+    if (!isObj(o)) continue;
+    const k = ch.path[ch.path.length - 1];
+    const cur = o[k];
+    if (typeof ch.prev === 'number' && typeof ch.post === 'number' && typeof cur === 'number') {
+      o[k] = Math.max(Math.min(ch.prev, ch.post, cur), cur - (ch.post - ch.prev));
+    } else if (same(cur, ch.post)) {
+      if (ch.prev === undefined) delete o[k];
+      else o[k] = structuredClone(ch.prev);
+    }
+  }
+}
 export const secrets = new WeakMap<Game, any>();
 
 export function createRoom(code: string, host: Profile): Room {
@@ -93,13 +134,14 @@ function core(room: Room, g: Game, now: number): Core {
     snapshot: () => structuredClone({ m: g.m, stats: g.stats }),
     addUndo: (ev, by, prev, windowMs = UNDO_MS) => {
       const stack = undoStacks.get(g) ?? [];
-      stack.push({ ref: ev.id, by, until: now + windowMs, prev });
+      stack.push({ ref: ev.id, by, until: now + windowMs, changes: diff(prev, c.snapshot()) });
       undoStacks.set(g, stack);
     },
     confirmEnd: (o, windowMs = UNDO_MS) => {
       g.pending = o;
       g.phase = 'finalizing';
       g.finalizeAt = now + windowMs;
+      finalRefs.set(g, g.events[g.events.length - 1]?.id ?? 0);
     },
     resolve: (o) => resolve(room, g, now, o),
     secret: () => {
@@ -165,6 +207,13 @@ export function applyIntent(room: Room, pid: string, it: Intent, now: number): b
       room.configs[it.mode] = it.config;
       room.ready = {};
       return true;
+    case 'abandon':
+      // Terminar una partida a medias: solo en pausa, para que no sea un accidente
+      if (!g || g.phase !== 'paused') return false;
+      room.screen = 'mode';
+      room.ready = {};
+      room.game = null;
+      return true;
     case 'toLobby':
       if (g && g.phase !== 'ended') return false;
       room.screen = 'lobby';
@@ -218,10 +267,9 @@ function undo(room: Room, g: Game, pid: string, now: number): boolean {
     if (u.by !== pid) continue;
     if (now > u.until) return false;
     stack.splice(i, 1);
-    const prev = structuredClone(u.prev);
-    g.m = prev.m;
-    g.stats = prev.stats;
-    if (g.phase === 'finalizing') {
+    revert({ m: g.m, stats: g.stats }, u.changes);
+    // Solo se reabre la partida si lo anulado es lo que la estaba cerrando
+    if (g.phase === 'finalizing' && finalRefs.get(g) === u.ref) {
       g.phase = 'playing';
       g.finalizeAt = null;
       g.pending = null;

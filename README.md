@@ -10,6 +10,7 @@ App árbitro para partidas de Nerf a 2 jugadores, con un móvil cada uno. Es una
 4. Durante la partida:
    - Voz: «[tu nombre], tocado / estado / pausa / seguir / anular».
    - Plan B táctil: **doble toque** = tocado, **mantener pulsado** = anular. El botón de pausa siempre está visible.
+   - Desde la pausa se puede **terminar la partida** a medias (pide dos toques) y volver a elegir modo.
 5. Para instalarla como app:
    - **iPhone**: Safari › Compartir › Añadir a pantalla de inicio.
    - **Android**: Chrome › menú › Instalar app.
@@ -18,9 +19,9 @@ App árbitro para partidas de Nerf a 2 jugadores, con un móvil cada uno. Es una
 
 ## Formas de jugar y de conectarse
 
-- **Dos móviles (lo normal):** la app intenta a la vez la conexión **directa** entre móviles (la más rápida) y un **respaldo por servidor** (mensajería pública MQTT). Si la wifi bloquea la directa, la partida va sola por el respaldo, también con datos móviles. En el lobby, la etiqueta de conexión indica qué ruta se usa y qué hacer si falla.
+- **Dos móviles (lo normal):** la app intenta a la vez la conexión **directa** entre móviles (la más rápida) y un **respaldo por servidor** (mensajería pública MQTT). Si la wifi bloquea la directa, la partida va sola por el respaldo, también con datos móviles. El respaldo usa tres servidores a la vez, así que basta con que uno funcione; las órdenes que no llegan se reenvían solas. En el lobby, la etiqueta de conexión indica qué ruta se usa y qué hacer si falla.
 - **Punto de acceso:** uno comparte internet y el otro se conecta a esa wifi. Es lo más fiable fuera de casa.
-- **Un móvil para los dos:** un único móvil hace de árbitro y entiende los dos nombres. Cada jugador tiene sus botones en pantalla. **No necesita ninguna red.**
+- **Un móvil para los dos:** un único móvil hace de árbitro y entiende los dos nombres. Cada jugador tiene sus botones en pantalla. **No necesita ninguna red:** tras abrir la web una vez con internet, queda guardada en el móvil y abre sin conexión.
 - **Bluetooth / AirDrop:** no son posibles. Safari no deja a las webs usar Bluetooth, y AirDrop solo envía archivos.
 
 ## Modos
@@ -34,7 +35,7 @@ App árbitro para partidas de Nerf a 2 jugadores, con un móvil cada uno. Es una
 | Buscar y destruir | El atacante esconde su móvil-bomba; el otro lo desactiva manteniendo 5 s. | tocado (quien desactiva) |
 | Tiro al blanco | La app canta una lata; quien la tumbe antes dice «mía». | mía · bomba |
 
-En todos: «estado», «pausa», «seguir» y «anular» (deshace tu última acción en 5 s).
+En todos: «estado», «pausa», «seguir» y «anular» (deshace tu última acción en 5 s, sin tocar lo que haya hecho el rival entretanto).
 
 ## Vídeo del HUD para montar
 
@@ -68,6 +69,7 @@ Al terminar una partida, **Vídeo del HUD** genera en el propio móvil un `.mov`
 npm install
 npm run dev        # http://localhost:5173 (en el Mac)
 npm run build      # genera dist/
+npm run preview    # sirve dist/ (aquí sí se activa el modo sin conexión)
 ```
 
 Para probar en los móviles sin publicar hace falta HTTPS por el micrófono. Lo más sencillo es publicar (ver abajo).

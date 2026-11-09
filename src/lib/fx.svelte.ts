@@ -23,6 +23,7 @@ export interface Banner {
 }
 
 const secs = (ms: number) => durationWords(ms);
+const points = (n: number) => (n === 1 ? 'un punto' : `${numberWord(Math.max(0, n), true)} puntos`);
 
 class Fx {
   hurtKey = $state(0); // cambia → destello rojo + temblor
@@ -108,7 +109,7 @@ class Fx {
           if (g.mode === 'armas') return `¡${nm(e.shooter)} supera el nivel final!`;
           return `¡Baja! ${nm(e.victim)} ha caído.`;
         case 'levelup':
-          return `${nm(e.by)}, nivel ${numberWord(e.value ?? 1)}. ${LEVELS[(e.value ?? 1) - 1]?.name}.`;
+          return `${nm(e.by)}, nivel ${numberWord(e.value ?? 1, true)}. ${LEVELS[(e.value ?? 1) - 1]?.name}.`;
         case 'leveldown':
           return `Humillación. ${nm(e.by)} baja al nivel cinco.`;
         case 'bombstart':
@@ -126,15 +127,15 @@ class Fx {
         case 'survived':
           return `¡Tiempo! ${nm(e.by)} ha sobrevivido.`;
         case 'plant':
-          return `${nm(e.by)} esconde la bomba. Cuarenta y cinco segundos.`;
+          return `${nm(e.by)} esconde la bomba. ${secs(Number(g.config.plantSec) * 1000)}.`;
         case 'armed':
           return 'Bomba armada.';
         case 'defused':
           return `¡${nm(e.by)} ha desactivado la bomba!`;
         case 'bombcan':
-          return `La lata bomba es la número ${numberWord(e.value ?? 0)}.`;
+          return `La lata bomba es la número ${numberWord(e.value ?? 0, true)}.`;
         case 'call':
-          return `¡Lata ${numberWord(e.value ?? 0)}!`;
+          return `¡Lata ${numberWord(e.value ?? 0, true)}!`;
         case 'claim':
           return `Para ${nm(e.by)}. ${((e.value ?? 0) / 1000).toFixed(2).replace('.', ',')} segundos.`;
         case 'tie':
@@ -150,7 +151,7 @@ class Fx {
         case 'uav':
           return `¡Racha de ${nm(e.by)}! El móvil de ${nm(e.victim)} pita treinta segundos.`;
         case 'roundend':
-          return e.by ? `Ronda para ${nm(e.by)}.` : `Fin de la ronda ${numberWord(e.value ?? 1)}.`;
+          return e.by ? `Ronda para ${nm(e.by)}.` : `Fin de la ronda ${numberWord(e.value ?? 1, true)}.`;
         case 'undo':
           return `Anulado por ${nm(e.by)}.`;
         case 'pause':
@@ -361,11 +362,11 @@ class Fx {
           sfx.levelup();
           this.levelKey++;
           this.showBanner({ title: `Nivel ${lv}`, sub: info?.name, tone: 'me' }, 2600);
-          I(`Nivel ${numberWord(lv)}. ${info?.name}.`);
+          I(`Nivel ${numberWord(lv, true)}. ${info?.name}.`);
         } else {
           this.hurt(e);
           this.showBanner({ title: `${name(e.by)} sube a nivel ${lv}`, sub: info?.name, tone: 'opp' }, 2000);
-          I(`Impacto. ${name(e.by)} sube a nivel ${numberWord(lv)}.`);
+          I(`Impacto. ${name(e.by)} sube a nivel ${numberWord(lv, true)}.`);
         }
         break;
       }
@@ -483,12 +484,12 @@ class Fx {
       case 'bombcan':
         sfx.alert();
         this.showBanner({ title: `Lata bomba: ${e.value}`, sub: 'Si la tumbas, pierdes un punto', tone: 'danger' }, 3200);
-        say(`La lata bomba es la número ${numberWord(e.value ?? 0)}. No la tumbéis.`);
+        say(`La lata bomba es la número ${numberWord(e.value ?? 0, true)}. No la tumbéis.`);
         break;
       case 'call':
         sfx.call();
         vibrate(80);
-        say(`¡Lata ${numberWord(e.value ?? 0)}!`, { interrupt: true, rate: 1.3 });
+        say(`¡Lata ${numberWord(e.value ?? 0, true)}!`, { interrupt: true, rate: 1.3 });
         break;
       case 'claim': {
         const ms = e.value ?? 0;
@@ -545,8 +546,8 @@ export function statusPhrase(room: Room, me: string, now: number): string {
       break;
     }
     case 'armas':
-      parts.push(`Estás en el nivel ${numberWord(m.level[me])}: ${LEVELS[m.level[me] - 1].name}.`);
-      parts.push(`${oppName}, nivel ${numberWord(m.level[o])}.`);
+      parts.push(`Estás en el nivel ${numberWord(m.level[me], true)}: ${LEVELS[m.level[me] - 1].name}.`);
+      parts.push(`${oppName}, nivel ${numberWord(m.level[o], true)}.`);
       break;
     case 'bomba':
       parts.push(m.holder === me ? 'Llevas la bomba.' : `La bomba la lleva ${oppName}.`);
@@ -562,8 +563,8 @@ export function statusPhrase(room: Room, me: string, now: number): string {
       parts.push(`Rondas: tú ${numberWord(g.roundWins[me])}, ${oppName} ${numberWord(g.roundWins[o])}.`);
       break;
     case 'blanco':
-      parts.push(`Tienes ${numberWord(Math.max(0, m.points[me]))} puntos. ${oppName}, ${numberWord(Math.max(0, m.points[o]))}.`);
-      parts.push(`La lata bomba es la ${numberWord(m.bombCan)}.`);
+      parts.push(`Tienes ${points(m.points[me])}. ${oppName}, ${points(m.points[o])}.`);
+      parts.push(`La lata bomba es la ${numberWord(m.bombCan, true)}.`);
       break;
   }
   if (g.phase === 'paused') parts.push('Partida en pausa.');

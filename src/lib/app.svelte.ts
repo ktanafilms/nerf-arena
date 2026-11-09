@@ -145,6 +145,10 @@ class App {
     this.unlock();
     if (!this.prefs.profile) return this.needProfile({ kind: 'join', code });
     this.startSession(new GuestSession(code, this.profile()!));
+    // Si se recarga la página a media partida, se vuelve a la sala con un toque
+    try {
+      history.replaceState(null, '', `${location.pathname}?sala=${code}`);
+    } catch {}
   }
 
   solo() {
