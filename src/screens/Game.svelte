@@ -96,6 +96,14 @@
     lastResume = resumeN;
   });
 
+  // Racha UAV del rival: mi móvil pita para delatarme
+  const uavOnMe = $derived(g.phase === 'playing' && g.m.uav?.target === me.id && gt < (g.m.uav?.until ?? 0));
+  $effect(() => {
+    if (!uavOnMe) return;
+    const t = setInterval(() => sfx.ping(), 1500);
+    return () => clearInterval(t);
+  });
+
   // Latido en estado crítico
   $effect(() => {
     if (!critical) return;
@@ -187,6 +195,7 @@
   <div
     class="game skin-{skin}"
     class:critical
+    class:recmode={app.prefs.recordingMode}
     style="--me:{mc.hex};--me-ink:{mc.ink};--opp:{oc.hex};--opp-ink:{oc.ink};--mc:{info.color}"
     onpointerdown={down}
     onpointerup={up}
@@ -215,7 +224,7 @@
       <!-- Datos -->
       <div class="meta">
         <span class="rec num">● {fmtClock(realClock, true)}</span>
-        {#if sb.center}<span class="center">{sb.center}</span>{/if}
+        {#if uavOnMe}<span class="center uav">¡Te delata el UAV!</span>{:else if sb.center}<span class="center">{sb.center}</span>{/if}
         <MicIndicator />
       </div>
 
@@ -879,6 +888,11 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  .center.uav {
+    color: #ff2e3a;
+    opacity: 1;
+    animation: blink 0.7s steps(2) infinite;
+  }
   .osub {
     font-size: 12px;
     font-weight: 800;
@@ -929,5 +943,29 @@
   }
   .iscore .dash {
     opacity: 0.5;
+  }
+  /* ── modo grabación: solo lo que aporta en vídeo ── */
+  .recmode .hint,
+  .recmode .botpanel,
+  .recmode .meta :global(.mic) {
+    display: none;
+  }
+  .recmode .rec {
+    font-size: 30px;
+    background: #0d0d0d;
+    color: #fff;
+    padding: 2px 10px;
+    border-radius: 4px;
+  }
+  .recmode .pausebtn {
+    width: 52px;
+    height: 52px;
+    opacity: 0.55;
+  }
+  .recmode .oname {
+    font-size: 40px;
+  }
+  .recmode .onum {
+    font-size: 110px;
   }
 </style>

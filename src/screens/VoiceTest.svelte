@@ -6,6 +6,7 @@
   import { callsignOf } from '../lib/types';
   import { sfx, vibrate } from '../lib/audio/sfx';
   import { say } from '../lib/audio/narrator';
+  import NarratorPicker from '../components/NarratorPicker.svelte';
 
   const profile = app.prefs.profile!;
   const name = app.me?.name ?? profile.name;
@@ -98,6 +99,7 @@
   </div>
 
   <div class="foot">
+    <NarratorPicker />
     {#if speechSupported}
       <button
         class="link engine"

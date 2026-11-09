@@ -5,7 +5,7 @@ import type { GEvent, Game, Room, Scoreboard } from '../types';
 import { colorDef } from '../types';
 import { iconPath } from '../icons';
 import { LEVELS, modeInfo } from '../modes';
-import { mmss } from '../engine/logic';
+import { mmss, EXTRA_NAMES } from '../engine/logic';
 
 export type Format = '16:9' | '9:16';
 export const PREROLL = 3000; // el vídeo empieza 3 s antes del ¡YA!
@@ -55,7 +55,7 @@ function label(room: Room, g: Game, e: GEvent): { title: string; sub: string; pi
   const nm = (pid?: string | null) => room.players.find((p) => p.id === pid)?.name ?? '';
   switch (e.kind) {
     case 'hit':
-      if (g.mode === 'duelo') return { title: 'Impacto', sub: `${nm(e.shooter)} ▸ ${nm(e.victim)} · quedan ${e.value}`, pid: e.shooter };
+      if (g.mode === 'duelo') return { title: e.reason === 'dorado' ? 'Dardo dorado' : 'Impacto', sub: `${nm(e.shooter)} ▸ ${nm(e.victim)} · quedan ${e.value}`, pid: e.shooter };
       if (g.mode === 'cazador') return { title: 'Cazado', sub: `${nm(e.victim)} aguantó ${mmss(e.value ?? 0)}`, pid: e.shooter };
       if (g.mode === 'armas') return { title: 'Nivel final', sub: `${nm(e.shooter)} ▸ ${nm(e.victim)}`, pid: e.shooter };
       return { title: 'Baja', sub: `${nm(e.shooter)} ▸ ${nm(e.victim)}`, pid: e.shooter };
@@ -101,6 +101,10 @@ function label(room: Room, g: Game, e: GEvent): { title: string; sub: string; pi
       return { title: 'Tiempo', sub: '' };
     case 'undo':
       return { title: 'Anulado', sub: nm(e.by), pid: e.by };
+    case 'surprise':
+      return { title: EXTRA_NAMES[e.reason ?? ''] ?? 'Sorpresa', sub: 'Evento sorpresa' };
+    case 'uav':
+      return { title: 'Racha UAV', sub: `${nm(e.by)} delata a ${nm(e.victim)} 30 s`, pid: e.by };
     default:
       return null;
   }

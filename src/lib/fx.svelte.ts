@@ -5,7 +5,7 @@ import type { GEvent, Game, Room } from './types';
 import { sfx, vibrate } from './audio/sfx';
 import { say, numberWord, durationWords } from './audio/narrator';
 import { gameTime } from './engine/room';
-import { mmss } from './engine/logic';
+import { mmss, EXTRA_NAMES } from './engine/logic';
 import { LEVELS, modeInfo } from './modes';
 
 export interface FeedItem {
@@ -145,6 +145,10 @@ class Fx {
           return `${nm(e.by)} ha tumbado la lata bomba.`;
         case 'lastlife':
           return null;
+        case 'surprise':
+          return `¡Evento sorpresa! ${EXTRA_NAMES[e.reason ?? '']}.`;
+        case 'uav':
+          return `¡Racha de ${nm(e.by)}! El móvil de ${nm(e.victim)} pita treinta segundos.`;
         case 'roundend':
           return e.by ? `Ronda para ${nm(e.by)}.` : `Fin de la ronda ${numberWord(e.value ?? 1)}.`;
         case 'undo':
@@ -207,6 +211,12 @@ class Fx {
       case 'plant':
       case 'bombcan':
         sfx.alert();
+        break;
+      case 'surprise':
+        sfx.alarm();
+        break;
+      case 'uav':
+        sfx.levelup();
         break;
       case 'timeup':
         sfx.alarm();
@@ -301,6 +311,7 @@ class Fx {
             this.scored();
             I(left <= 0 ? '¡Baja! Rival eliminado.' : `¡Acierto! A ${name(e.victim)} le ${left === 1 ? 'queda una' : 'quedan ' + numberWord(left)}.`);
           }
+          if (e.reason === 'dorado' && left > 0) this.showBanner({ title: 'Dardo dorado', sub: 'Impacto doble', tone: victimMe ? 'danger' : 'me' }, 1800);
           if (left <= 0)
             this.showBanner(
               { title: victimMe ? 'Eliminado' : 'Baja', sub: g.config.confirmedKill ? 'Baja confirmada: 10 s para anular' : 'Confirmando…', tone: victimMe ? 'danger' : 'me' },
@@ -450,6 +461,22 @@ class Fx {
         sfx.victory();
         this.showBanner({ title: '¡Desactivada!', sub: `Por ${name(e.by)}`, tone: mine ? 'me' : 'opp' }, 2600);
         I(mine ? '¡Bomba desactivada!' : 'Han desactivado tu bomba.');
+        break;
+
+      // ── Extras ──
+      case 'surprise': {
+        const sub = ({ reload: '10 s para recoger dardos', freeze: 'Nadie se mueve 5 s', golden: 'El siguiente acierto vale doble' } as Record<string, string>)[e.reason ?? ''];
+        sfx.alarm();
+        vibrate([150, 80, 150]);
+        this.showBanner({ title: EXTRA_NAMES[e.reason ?? ''] ?? 'Sorpresa', sub, tone: e.reason === 'golden' ? 'me' : 'danger' }, 3000);
+        I(`¡Evento sorpresa! ${EXTRA_NAMES[e.reason ?? '']}. ${sub}.`);
+        break;
+      }
+      case 'uav':
+        sfx.levelup();
+        if (mine) this.showBanner({ title: 'Racha UAV', sub: `El móvil de ${name(e.victim)} pita 30 s`, tone: 'me' }, 2600);
+        else this.showBanner({ title: '¡UAV enemigo!', sub: 'Tu móvil te delata 30 s', tone: 'danger' }, 2600);
+        I(mine ? `¡Racha! El móvil de ${name(e.victim)} pita treinta segundos.` : '¡UAV enemigo! Tu móvil te delata.');
         break;
 
       // ── Tiro al blanco ──
@@ -616,6 +643,10 @@ export function describe(room: Room, g: Game, e: GEvent): string | null {
       return 'Nadie tumba la lata';
     case 'bombhit':
       return `${nm(e.by)} tumba la lata bomba (−1)`;
+    case 'surprise':
+      return `Evento sorpresa: ${EXTRA_NAMES[e.reason ?? ''] ?? ''}`;
+    case 'uav':
+      return `Racha UAV de ${nm(e.by)}`;
     default:
       return null;
   }

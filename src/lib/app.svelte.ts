@@ -60,7 +60,7 @@ function loadPrefs(): Prefs {
   }
 }
 
-export type Screen = 'home' | 'guide' | 'profile' | 'join' | 'room' | 'voicetest';
+export type Screen = 'home' | 'guide' | 'profile' | 'join' | 'room' | 'voicetest' | 'history';
 type After = { kind: 'create' } | { kind: 'join'; code: string } | { kind: 'solo' } | { kind: 'local' } | { kind: 'back' } | null;
 
 class App {

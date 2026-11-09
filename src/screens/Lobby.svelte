@@ -108,6 +108,15 @@
   <div class="foot">
     <button class="link" onclick={() => app.editProfile()}>Perfil</button>
     <button
+      class="recbtn"
+      class:on={app.prefs.recordingMode}
+      onclick={() => {
+        app.prefs.recordingMode = !app.prefs.recordingMode;
+        app.savePrefs();
+        app.showToast(app.prefs.recordingMode ? 'Modo grabación: la partida solo muestra lo que aporta en vídeo' : 'Modo grabación desactivado', 2600);
+      }}><i></i>Modo grabación</button
+    >
+    <button
       class="link"
       onclick={() => {
         app.voiceTestThen = null;
@@ -424,6 +433,35 @@
   .foot {
     display: flex;
     justify-content: space-between;
+    align-items: center;
+  }
+  .recbtn {
+    appearance: none;
+    border: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--bg-2);
+    color: var(--mute);
+    font-family: var(--body);
+    font-weight: 700;
+    font-size: 12px;
+    padding: 6px 10px;
+    border-radius: 999px;
+  }
+  .recbtn i {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--mute);
+  }
+  .recbtn.on {
+    color: var(--paper);
+    background: #3a0608;
+  }
+  .recbtn.on i {
+    background: var(--danger);
+    animation: blink 1s infinite;
   }
   .foot .link {
     padding: 4px 0;

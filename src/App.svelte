@@ -8,6 +8,7 @@
   import Join from './screens/Join.svelte';
   import RoomScreen from './screens/Room.svelte';
   import VoiceTest from './screens/VoiceTest.svelte';
+  import HistoryScreen from './screens/HistoryScreen.svelte';
 
   // Enlace del QR: ?sala=ABCD → unirse directamente
   const params = new URLSearchParams(location.search);
@@ -70,6 +71,10 @@
           if (mode === 'blanco' && g().m.sub === 'live') I(i % 2 ? 'A' : 'B', { t: 'claim', at: t - 200 });
         }
         (window as any).__hudStage = 'simulado ' + g().phase + ' ' + g().events.length;
+        if (fmt === ('markers' as any)) {
+          const M = await import('./lib/markers');
+          return { edl: await M.edl(r).text(), xml: await M.xmeml(r).text(), csv: await M.csv(r).text() };
+        }
         const res = await exportHud(r, fmt, (f) => ((window as any).__hudStage = 'exportando ' + Math.round(f * 100)));
         (window as any).__hudStage = 'mov listo';
         const buf = new Uint8Array(await res.blob.arrayBuffer());
@@ -101,6 +106,56 @@
         if (mode === 'buscar' && g.m.sub === 'bomb' && g.round === 1) act(g.m.attacker, { t: 'defuse' });
         if (mode === 'blanco' && g.m.sub === 'live') act(i % 2 ? 'A' : 'B', { t: 'claim', at: s.now() });
       }, 3000);
+    } else if (demo === 'screen') {
+      // abrir una pantalla concreta: historial / voicetest
+      const sc = params.get('s') as any;
+      if (sc === 'history') {
+        import('./lib/history.svelte').then(async ({ history }) => {
+          const E = await import('./lib/engine/room');
+          let t = Date.now() - 7200_000;
+          for (const mode of ['duelo', 'bomba', 'blanco'] as const) {
+            const r = E.createRoom('H', { name: 'Pablo', color: 'naranja', icon: 'rayo', aliases: [] });
+            E.joinGuest(r, { name: 'Marta', color: 'azul', icon: 'calavera', aliases: [] });
+            E.applyIntent(r, 'A', { t: 'selectMode', mode }, t);
+            E.applyIntent(r, 'A', { t: 'ready', ready: true }, t);
+            E.applyIntent(r, 'B', { t: 'ready', ready: true }, t);
+            for (let i = 0; i < 4000 && r.game!.phase !== 'ended'; i++) {
+              t += 100;
+              E.tick(r, t);
+              if (i % 40 === 0 && r.game!.phase === 'playing') {
+                const g = r.game!;
+                if (mode === 'bomba') E.applyIntent(r, g.m.holder === 'A' ? 'B' : 'A', { t: 'hit' }, t);
+                else if (mode === 'blanco') g.m.sub === 'live' && E.applyIntent(r, 'A', { t: 'claim', at: t }, t);
+                else E.applyIntent(r, 'B', { t: 'hit' }, t);
+              }
+            }
+            history.save(r);
+          }
+          app.screen = 'history';
+        });
+      } else if (sc === 'voicetest') {
+        app.solo();
+        app.screen = 'voicetest';
+      }
+    } else if (demo === 'gram') {
+      (window as any).__gram = async (file: string, grammar: string | null) => {
+        const { loadModel } = await import('./lib/voice/vosk-engine');
+        const model = await loadModel(() => {});
+        const buf = await (await fetch('./__test/' + file)).arrayBuffer();
+        const audio = await new OfflineAudioContext(1, 48000, 48000).decodeAudioData(buf);
+        const rec = grammar ? new model.KaldiRecognizer(audio.sampleRate, grammar) : new model.KaldiRecognizer(audio.sampleRate);
+        const out: string[] = [];
+        rec.on('result', (m: any) => m.result.text && out.push(m.result.text));
+        const d = audio.getChannelData(0);
+        for (let i = 0; i < d.length; i += 4096) {
+          rec.acceptWaveformFloat(d.slice(i, i + 4096), audio.sampleRate);
+          await new Promise((r) => setTimeout(r, 15));
+        }
+        rec.retrieveFinalResult();
+        await new Promise((r) => setTimeout(r, 800));
+        rec.remove();
+        return out;
+      };
     } else if (demo === 'vozfile') {
       // prueba del reconocimiento con una grabación, sin micro
       (async () => {
@@ -193,6 +248,8 @@
       <RoomScreen />
     {:else if app.screen === 'voicetest'}
       <VoiceTest />
+    {:else if app.screen === 'history'}
+      <HistoryScreen />
     {/if}
   </div>
 {/key}

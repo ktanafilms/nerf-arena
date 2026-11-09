@@ -19,7 +19,10 @@
     {:else}
       <span></span>
     {/if}
-    <button class="help" onclick={() => (app.screen = 'guide')} aria-label="Cómo se juega">?</button>
+    <div class="tr">
+      <button class="hist" onclick={() => (app.screen = 'history')}>Historial</button>
+      <button class="help" onclick={() => (app.screen = 'guide')} aria-label="Cómo se juega">?</button>
+    </div>
   </div>
 
   <Hero color={colorHex(p?.color ?? 'naranja')} />
@@ -72,6 +75,24 @@
     font-size: 22px;
     text-transform: uppercase;
     line-height: 1;
+  }
+  .tr {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .hist {
+    appearance: none;
+    border: 2px solid rgba(255, 255, 255, 0.18);
+    background: none;
+    color: var(--paper);
+    height: 40px;
+    padding: 0 14px;
+    border-radius: 20px;
+    font-family: var(--display);
+    font-weight: 900;
+    font-size: 16px;
+    text-transform: uppercase;
   }
   .help {
     appearance: none;

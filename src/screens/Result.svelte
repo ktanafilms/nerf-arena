@@ -6,7 +6,7 @@
   import { colorDef } from '../lib/types';
   import { modeInfo } from '../lib/modes';
   import Avatar from '../components/Avatar.svelte';
-  import HudExport from '../components/HudExport.svelte';
+  import ExportSheet from '../components/ExportSheet.svelte';
 
   const s = app.session!;
   const room = $derived(s.room!);
@@ -142,7 +142,7 @@
         {iReady ? (oppReady ? '¡Vamos!' : 'Esperando al rival…') : oppReady ? 'Revancha · te espera' : 'Revancha'}
       </button>
       <div class="two">
-        <button class="btn ghost small" onclick={() => (hud = true)}>Vídeo del HUD</button>
+        <button class="btn ghost small" onclick={() => (hud = true)}>Para el vídeo</button>
         <button class="btn ghost small" onclick={() => s.send({ t: 'toLobby' })}>Otro modo</button>
       </div>
       <button class="link copy" onclick={copy}>Copiar línea de tiempo</button>
@@ -151,7 +151,7 @@
 </div>
 
 {#if hud}
-  <HudExport {room} onclose={() => (hud = false)} />
+  <ExportSheet {room} onclose={() => (hud = false)} />
 {/if}
 
 <style>

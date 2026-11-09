@@ -61,7 +61,10 @@ export type GEventKind =
   | 'claim'
   | 'tie'
   | 'nocall'
-  | 'bombhit';
+  | 'bombhit'
+  // Extras
+  | 'surprise'
+  | 'uav';
 
 /** Marcador en un instante (se guarda en cada evento para el vídeo del HUD). */
 export interface SbSide {

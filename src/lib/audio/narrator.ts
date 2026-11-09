@@ -7,13 +7,42 @@ let active = 0;
 
 export const ttsSupported = typeof window !== 'undefined' && 'speechSynthesis' in window;
 
+let preferred: string | null = (() => {
+  try {
+    return JSON.parse(localStorage.getItem('nerf.prefs') ?? '{}').narratorVoice ?? null;
+  } catch {
+    return null;
+  }
+})();
+
+/** Voces en español disponibles en este móvil (las mejoradas primero). */
+export function spanishVoices(): SpeechSynthesisVoice[] {
+  if (!ttsSupported) return [];
+  const es = speechSynthesis.getVoices().filter((v) => v.lang?.toLowerCase().startsWith('es'));
+  const score = (v: SpeechSynthesisVoice) =>
+    (/enhanced|premium|mejorada|neural|natural/i.test(v.name) ? 0 : 1) * 10 + (/es[-_]es/i.test(v.lang) ? 0 : 1);
+  return es.sort((a, b) => score(a) - score(b) || a.name.localeCompare(b.name));
+}
+
+export function setNarratorVoice(name: string | null) {
+  preferred = name;
+  pickVoice();
+}
+
+export function currentVoiceName() {
+  return voice?.name ?? null;
+}
+
 function pickVoice() {
   if (!ttsSupported) return;
   const voices = speechSynthesis.getVoices();
   const es = voices.filter((v) => v.lang?.toLowerCase().startsWith('es'));
   const pref = ['es-es', 'es_es'];
+  const chosen = preferred ? es.find((v) => v.name === preferred) : null;
   voice =
-    es.find((v) => pref.includes(v.lang.toLowerCase()) && /mónica|monica|jorge|google|lucia|álvaro|alvaro|enhanced|premium/i.test(v.name)) ??
+    chosen ??
+    es.find((v) => pref.includes(v.lang.toLowerCase()) && /enhanced|premium|mejorada/i.test(v.name)) ??
+    es.find((v) => pref.includes(v.lang.toLowerCase()) && /mónica|monica|jorge|google|lucia|álvaro|alvaro/i.test(v.name)) ??
     es.find((v) => pref.includes(v.lang.toLowerCase())) ??
     es[0] ??
     null;

@@ -61,6 +61,8 @@ export const MODES: ModeInfo[] = [
       'Recoge dardos cuando quieras (salvo variantes).',
       'Un solo dardo: empezáis con 1. Si fallas, ve a por él.',
       'Baja confirmada: solo vale si el tirador recoge su dardo. 10 s para anular.',
+      'Eventos sorpresa: recarga libre (10 s), ¡congelados! (5 s) o dardo dorado (el siguiente acierto quita 2 vidas).',
+      'Racha UAV: 2 aciertos seguidos sin recibir y el móvil del rival pita 30 s.',
     ],
     available: true,
     bars: [
@@ -68,7 +70,7 @@ export const MODES: ModeInfo[] = [
       { k: 'Movimiento', v: 0.6 },
       { k: 'Estrategia', v: 0.4 },
     ],
-    defaults: { lives: 3, timeLimitSec: 300, oneInChamber: false, confirmedKill: false },
+    defaults: { lives: 3, timeLimitSec: 300, oneInChamber: false, confirmedKill: false, surprises: false, uav: false },
     options: [
       { key: 'lives', label: 'Vidas', choices: [1, 3, 5].map((v) => ({ v, l: String(v) })) },
       { key: 'timeLimitSec', label: 'Tiempo', choices: mins([180, 300, 600, 0]) },
@@ -76,6 +78,8 @@ export const MODES: ModeInfo[] = [
     toggles: [
       { key: 'oneInChamber', label: 'Un solo dardo', hint: 'Si fallas, ve a por él' },
       { key: 'confirmedKill', label: 'Baja confirmada', hint: 'Recoge tu dardo para que cuente' },
+      { key: 'surprises', label: 'Eventos sorpresa', hint: 'Recarga libre, congelados, dardo dorado' },
+      { key: 'uav', label: 'Racha UAV', hint: 'Encadenar aciertos hace pitar al rival' },
     ],
     facts: (c) => [
       { k: 'Vidas', v: String(c.lives), f: Number(c.lives) / 5 },
@@ -96,6 +100,8 @@ export const MODES: ModeInfo[] = [
       'Si te dan, di «[tu nombre], tocado»: el rival sube de nivel.',
       'Humillación: si te dan estando en el nivel 6, bajas al 5.',
       'Gana el primero que acierta desde el nivel 6.',
+      'Eventos sorpresa: recarga libre, ¡congelados! o dardo dorado (el siguiente acierto sube 2 niveles).',
+      'Racha UAV: 3 aciertos seguidos sin recibir y el móvil del rival pita 30 s.',
     ],
     available: true,
     bars: [
@@ -103,9 +109,12 @@ export const MODES: ModeInfo[] = [
       { k: 'Movimiento', v: 0.5 },
       { k: 'Estrategia', v: 0.5 },
     ],
-    defaults: { timeLimitSec: 0 },
+    defaults: { timeLimitSec: 0, surprises: false, uav: false },
     options: [{ key: 'timeLimitSec', label: 'Tiempo', choices: mins([300, 600, 0]) }],
-    toggles: [],
+    toggles: [
+      { key: 'surprises', label: 'Eventos sorpresa', hint: 'Recarga libre, congelados, dardo dorado' },
+      { key: 'uav', label: 'Racha UAV', hint: 'Encadenar aciertos hace pitar al rival' },
+    ],
     facts: (c) => [
       { k: 'Niveles', v: '6', f: 1 },
       { k: 'Tiempo', v: min(Number(c.timeLimitSec)), f: c.timeLimitSec ? Number(c.timeLimitSec) / 600 : 1 },

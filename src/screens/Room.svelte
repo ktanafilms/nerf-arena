@@ -7,6 +7,7 @@
   import { callsignOf } from '../lib/types';
   import { extraCommands } from '../lib/modes';
   import { SoloSession } from '../lib/net/session.svelte';
+  import { history } from '../lib/history.svelte';
   import Lobby from './Lobby.svelte';
   import ModeScreen from './ModeScreen.svelte';
   import Game from './Game.svelte';
@@ -69,6 +70,11 @@
         break;
     }
   }
+
+  // Guardar cada partida terminada en el historial
+  $effect(() => {
+    if (room?.game?.phase === 'ended') history.save(room);
+  });
 
   // Apagar el micro fuera de la partida
   $effect(() => {

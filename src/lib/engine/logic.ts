@@ -44,6 +44,57 @@ const sides = (room: Room, f: (pid: string) => SbSide) => {
   return { A: f(a ?? 'A'), B: f(b ?? 'B') };
 };
 const num = (g: Game, k: string) => Number(g.config[k]);
+export const EXTRA_NAMES: Record<string, string> = { reload: 'Recarga libre', freeze: '¡Congelados!', golden: 'Dardo dorado' };
+const extraLabel = (g: Game) => (g.m.event ? EXTRA_NAMES[g.m.event.kind] : '');
+
+// ───────────────────────────── EXTRAS (duelo y armas) ─────────────────────────────
+const SURPRISES = ['reload', 'freeze', 'golden'] as const;
+const SURPRISE_MS: Record<string, number> = { reload: 10000, freeze: 5000, golden: 0 };
+
+/** Eventos sorpresa: uno cada 60-120 s. Devuelve true si cambia algo. */
+function surpriseTick(c: Core): boolean {
+  const { m, config } = c.g;
+  if (!config.surprises) return false;
+  let changed = false;
+  if (m.nextSurprise == null) {
+    m.nextSurprise = c.gt + rnd(60000, 120000);
+    changed = true;
+  }
+  if (m.event && m.event.kind !== 'golden' && c.gt >= m.event.until) {
+    m.event = null;
+    changed = true;
+  }
+  if (c.gt >= m.nextSurprise) {
+    const kind = pick([...SURPRISES]);
+    m.event = { kind, until: c.gt + SURPRISE_MS[kind] };
+    if (kind === 'golden') m.golden = true;
+    m.nextSurprise = c.gt + rnd(60000, 120000);
+    c.push({ kind: 'surprise', reason: kind, value: SURPRISE_MS[kind] });
+    changed = true;
+  }
+  if (m.uav && c.gt >= m.uav.until) {
+    m.uav = null;
+    changed = true;
+  }
+  return changed;
+}
+
+/** Racha UAV: tras N aciertos seguidos sin recibir, el móvil del rival pita 30 s. */
+function uavCheck(c: Core, shooter: string, victim: string, need: number) {
+  if (!c.g.config.uav) return;
+  if (c.g.stats[shooter].streak === need) {
+    c.g.m.uav = { by: shooter, target: victim, until: c.gt + 30000 };
+    c.push({ kind: 'uav', by: shooter, victim });
+  }
+}
+
+/** Consume el dardo dorado si está activo. */
+function useGolden(c: Core): boolean {
+  if (!c.g.m.golden) return false;
+  c.g.m.golden = false;
+  if (c.g.m.event?.kind === 'golden') c.g.m.event = null;
+  return true;
+}
 
 // ───────────────────────────── DUELO ─────────────────────────────
 const duelo: ModeLogic = {
@@ -55,10 +106,12 @@ const duelo: ModeLogic = {
   hit(c, victim) {
     const { m } = c.g;
     const shooter = c.other(victim);
-    const dmg = m.sudden ? m.lives[victim] : 1;
+    const golden = useGolden(c);
+    const dmg = m.sudden ? m.lives[victim] : golden ? 2 : 1;
     m.lives[victim] = Math.max(0, m.lives[victim] - dmg);
     c.credit(shooter, victim);
-    const ev = c.push({ kind: 'hit', shooter, victim, by: victim, value: m.lives[victim] });
+    const ev = c.push({ kind: 'hit', shooter, victim, by: victim, value: m.lives[victim], reason: golden ? 'dorado' : undefined });
+    if (m.lives[victim] > 0) uavCheck(c, shooter, victim, 2);
     if (m.lives[victim] <= 0) {
       c.confirmEnd({ scope: 'game', winner: shooter, reason: 'eliminado' }, duelo.undoWindow!(c.g));
     } else if (m.lives[victim] === 1 && num(c.g, 'lives') > 1) {
@@ -68,8 +121,9 @@ const duelo: ModeLogic = {
   },
   tick(c) {
     const { m } = c.g;
+    const extra = surpriseTick(c);
     const limit = num(c.g, 'timeLimitSec') * 1000;
-    if (!limit || m.sudden || c.gt < limit) return false;
+    if (!limit || m.sudden || c.gt < limit) return extra;
     c.push({ kind: 'timeup' });
     const [a, b] = ids(c.room);
     if (m.lives[a] !== m.lives[b]) c.resolve({ scope: 'game', winner: m.lives[a] > m.lives[b] ? a : b, reason: 'tiempo' });
@@ -84,7 +138,7 @@ const duelo: ModeLogic = {
     const limit = num(g, 'timeLimitSec') * 1000;
     return {
       ...sides(room, (pid) => ({ main: String(g.m.lives?.[pid] ?? 0), sub: 'vidas' })),
-      center: g.m.sudden ? 'Muerte súbita' : '',
+      center: g.m.sudden ? 'Muerte súbita' : extraLabel(g),
       clock: limit && !g.m.sudden ? { kind: 'down', ref: limit } : { kind: 'up', ref: 0 },
     };
   },
@@ -105,8 +159,10 @@ const armas: ModeLogic = {
       c.confirmEnd({ scope: 'game', winner: shooter, reason: m.sudden ? 'muerte súbita' : 'nivel final' });
       return ev;
     }
-    m.level[shooter]++;
-    const ev = c.push({ kind: 'levelup', shooter, victim, by: shooter, value: m.level[shooter] });
+    const golden = useGolden(c);
+    m.level[shooter] = Math.min(6, m.level[shooter] + (golden ? 2 : 1));
+    const ev = c.push({ kind: 'levelup', shooter, victim, by: shooter, value: m.level[shooter], reason: golden ? 'dorado' : undefined });
+    uavCheck(c, shooter, victim, 3);
     if (m.level[victim] === 6) {
       m.level[victim] = 5;
       m.humiliations[victim]++;
@@ -116,8 +172,9 @@ const armas: ModeLogic = {
   },
   tick(c) {
     const { m } = c.g;
+    const extra = surpriseTick(c);
     const limit = num(c.g, 'timeLimitSec') * 1000;
-    if (!limit || m.sudden || c.gt < limit) return false;
+    if (!limit || m.sudden || c.gt < limit) return extra;
     c.push({ kind: 'timeup' });
     const [a, b] = ids(c.room);
     if (m.level[a] !== m.level[b]) c.resolve({ scope: 'game', winner: m.level[a] > m.level[b] ? a : b, reason: 'tiempo' });
@@ -135,7 +192,7 @@ const armas: ModeLogic = {
         const l = g.m.level?.[pid] ?? 1;
         return { main: String(l), sub: LEVELS[l - 1]?.short ?? '' };
       }),
-      center: g.m.sudden ? 'Muerte súbita' : '',
+      center: g.m.sudden ? 'Muerte súbita' : extraLabel(g),
       clock: limit && !g.m.sudden ? { kind: 'down', ref: limit } : { kind: 'up', ref: 0 },
     };
   },

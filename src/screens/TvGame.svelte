@@ -61,6 +61,13 @@
     const t = setInterval(() => sfx.tick(1), 1100 - 850 * Math.min(1, Number(g.m.tension ?? 0)));
     return () => clearInterval(t);
   });
+  // Racha UAV: pita mientras dura
+  const uavOn = $derived(g.phase === 'playing' && !!g.m.uav && gt < (g.m.uav?.until ?? 0));
+  $effect(() => {
+    if (!uavOn) return;
+    const t = setInterval(() => sfx.ping(), 1500);
+    return () => clearInterval(t);
+  });
   const pingIdx = $derived.by(() => {
     if (g.phase !== 'playing') return -1;
     if (g.mode === 'cazador' && g.m.sub === 'hunt') {
