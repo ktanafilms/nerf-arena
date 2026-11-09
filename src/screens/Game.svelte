@@ -438,6 +438,8 @@
   .dorsal {
     flex: 1;
     min-height: 0;
+    container-type: size;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -446,6 +448,8 @@
   }
   .mnum {
     font-size: min(40vh, 360px);
+    /* se ajusta al hueco real (descontando las barras de vida) */
+    font-size: min(calc((100cqh - 40px) / 0.8), 80cqw, 380px);
     line-height: 0.76;
     letter-spacing: -0.03em;
   }
@@ -839,8 +843,8 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 6px;
-    margin: 0 20px 12px;
-    padding: 8px;
+    margin: 0 20px 8px;
+    padding: 6px;
     background: #0d0d0d;
     color: var(--paper);
     border-radius: 4px;
@@ -848,8 +852,7 @@
     font-weight: 700;
   }
   .botpanel span {
-    flex: 1 0 100%;
-    color: var(--mute);
+    display: none;
   }
   .botpanel button {
     flex: 1;

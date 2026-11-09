@@ -67,12 +67,19 @@
     {#if s.error}<p class="err">{s.error}</p>{/if}
     <button class="link" onclick={() => app.leave()}>Cancelar</button>
   </div>
-{:else if room.screen === 'game' && room.game}
-  <Game onCommand={handle} />
-{:else if room.screen === 'mode'}
-  <ModeScreen />
 {:else}
-  <Lobby />
+  {#key room.screen}
+    <div class="wipe"></div>
+    <div class="enter" style="position:absolute;inset:0">
+      {#if room.screen === 'game' && room.game}
+        <Game onCommand={handle} />
+      {:else if room.screen === 'mode'}
+        <ModeScreen />
+      {:else}
+        <Lobby />
+      {/if}
+    </div>
+  {/key}
 {/if}
 
 {#if room && s.kind === 'guest' && s.status !== 'online'}

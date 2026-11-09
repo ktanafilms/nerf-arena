@@ -6,7 +6,6 @@
   import { colorDef } from '../lib/types';
   import { modeInfo } from '../lib/modes';
   import Avatar from '../components/Avatar.svelte';
-  import ScoreRow from '../components/ScoreRow.svelte';
 
   const s = app.session!;
   const room = $derived(s.room!);
@@ -48,7 +47,7 @@
     <div class="verdict" in:fly={{ y: 60, duration: 500 }}>{!winner ? 'Empate' : won ? 'Victoria' : 'Derrota'}</div>
     {#if winner}
       <div class="winner" in:fly={{ x: -60, duration: 450, delay: 150 }}>
-        <Avatar icon={winner.icon} color={winner.color} size={58} />
+        <Avatar icon={winner.icon} color={winner.color} size={48} />
         <span class="wname">{winner.name}</span>
         <span class="mvp">MVP</span>
       </div>
@@ -74,8 +73,11 @@
 
     <div class="session">
       <span class="eyebrow">Sesión</span>
-      <ScoreRow player={me} value={room.wins[me.id] ?? 0} />
-      <ScoreRow player={opp} value={room.wins[opp.id] ?? 0} />
+      <span class="sline">
+        <b style="color:{colorDef(me.color).hex}">{me.name}</b>
+        <span class="num">{room.wins[me.id] ?? 0}–{room.wins[opp.id] ?? 0}</span>
+        <b style="color:{colorDef(opp.color).hex}">{opp.name}</b>
+      </span>
     </div>
 
     <div class="actions">
@@ -96,12 +98,12 @@
     inset: 0;
     display: flex;
     flex-direction: column;
-    overflow-y: auto;
+    overflow: hidden;
   }
   .hero {
     background: var(--c);
     color: var(--i);
-    padding: calc(var(--sat) + 16px) 20px 40px;
+    padding: calc(var(--sat) + clamp(10px, 2vh, 16px)) 18px clamp(28px, 5vh, 40px);
     clip-path: polygon(0 0, 100% 0, 100% 86%, 0 100%);
   }
   .meta {
@@ -118,10 +120,10 @@
   .verdict {
     font-family: var(--display);
     font-weight: 900;
-    font-size: min(24vw, 150px);
+    font-size: min(22vw, 13vh, 150px);
     text-transform: uppercase;
     line-height: 0.8;
-    margin: 14px 0 16px;
+    margin: clamp(6px, 1.5vh, 14px) 0 clamp(8px, 1.6vh, 16px);
     letter-spacing: -0.01em;
   }
   .winner {
@@ -138,7 +140,7 @@
   .wname {
     font-family: var(--display);
     font-weight: 900;
-    font-size: 48px;
+    font-size: clamp(34px, 6vh, 48px);
     text-transform: uppercase;
     line-height: 1;
   }
@@ -156,8 +158,9 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 20px;
-    padding: 4px 20px calc(var(--sab) + 20px);
+    gap: clamp(8px, 1.8vh, 18px);
+    padding: 0 18px calc(var(--sab) + clamp(12px, 2.5vh, 20px));
+    min-height: 0;
   }
   .sh,
   .sr {
@@ -186,7 +189,7 @@
     color: var(--mute);
   }
   .sr b {
-    font-size: 40px;
+    font-size: clamp(26px, 4.6vh, 40px);
     color: var(--mute);
     opacity: 0.6;
   }
@@ -196,8 +199,23 @@
   }
   .session {
     display: flex;
-    flex-direction: column;
-    gap: 6px;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--bg-2);
+    border-radius: 6px;
+    padding: 8px 12px;
+  }
+  .sline {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    font-family: var(--display);
+    font-weight: 900;
+    font-size: 22px;
+    text-transform: uppercase;
+  }
+  .sline .num {
+    font-size: 32px;
   }
   .actions {
     margin-top: auto;

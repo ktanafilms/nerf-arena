@@ -20,6 +20,10 @@ export interface Prefs {
 const PREFS_KEY = 'nerf.prefs';
 
 function loadPrefs(): Prefs {
+  // Solo en desarrollo: ?demo salta la guía con un perfil de prueba (para capturas)
+  if (import.meta.env.DEV && new URLSearchParams(location.search).has('demo')) {
+    return { profile: { name: 'Pablo', color: 'naranja', icon: 'rayo', aliases: [] }, seenGuide: true, voiceTested: true, seenTip: true, recording: false };
+  }
   const def: Prefs = { profile: null, seenGuide: false, voiceTested: false, seenTip: false, recording: false };
   try {
     const p: Prefs = { ...def, ...JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') };

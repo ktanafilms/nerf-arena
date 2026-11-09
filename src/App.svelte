@@ -14,6 +14,24 @@
   const sala = normalizeCode(params.get('sala') ?? '');
   let pendingJoin = $state(sala.length === 4 ? sala : '');
 
+  // Solo en desarrollo: ?demo=lobby|mode|game|result para revisar pantallas
+  if (import.meta.env.DEV) {
+    const demo = params.get('demo');
+    if (demo && demo !== '1') {
+      app.solo();
+      const s = app.session as any;
+      if (demo !== 'lobby') s.send({ t: 'selectMode', mode: 'duelo' });
+      if (demo === 'game' || demo === 'result') {
+        s.send({ t: 'ready', ready: true });
+        setTimeout(() => {
+          s.bot({ t: 'hit' });
+          s.send({ t: 'hit' });
+        }, 4200);
+        if (demo === 'result') setTimeout(() => [0, 1].forEach(() => s.send({ t: 'hit' })), 4400);
+      }
+    }
+  }
+
   if (!app.prefs.seenGuide) app.screen = 'guide';
   else if (pendingJoin) app.screen = 'join';
 
@@ -33,6 +51,7 @@
 
 
 {#key app.screen}
+  <div class="wipe"></div>
   <div class="enter" style="position:absolute;inset:0">
     {#if app.screen === 'home'}
       <Home />

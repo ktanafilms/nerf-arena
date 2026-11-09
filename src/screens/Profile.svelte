@@ -30,7 +30,7 @@
   </div>
 
   <div class="preview">
-    <Avatar {icon} {color} size={84} />
+    <Avatar {icon} {color} size={64} />
     <div class="pname display">{name || 'Tu nombre'}</div>
   </div>
 
@@ -101,7 +101,7 @@
 
 <style>
   .profile {
-    gap: 22px;
+    gap: clamp(10px, 2.2vh, 20px);
   }
   .head {
     display: flex;
@@ -115,7 +115,7 @@
     min-width: 0;
   }
   .pname {
-    font-size: 64px;
+    font-size: clamp(44px, 8vh, 64px);
     color: var(--me);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -124,7 +124,7 @@
   section {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
   }
   input {
     appearance: none;
@@ -134,9 +134,9 @@
     color: var(--paper);
     font-family: var(--display);
     font-weight: 900;
-    font-size: 44px;
+    font-size: clamp(34px, 6vh, 44px);
     text-transform: uppercase;
-    padding: 4px 0 8px;
+    padding: 2px 0 6px;
     outline: none;
     border-radius: 0;
     user-select: text;
@@ -169,7 +169,7 @@
   .ic {
     appearance: none;
     border: none;
-    aspect-ratio: 1;
+    height: clamp(42px, 6.4vh, 54px);
     background: var(--bg-2);
     border-radius: 4px;
     display: grid;
@@ -197,7 +197,7 @@
   .sw {
     appearance: none;
     border: none;
-    height: 48px;
+    height: clamp(38px, 5.6vh, 48px);
     background: var(--c);
     border-radius: 4px;
     transition: transform 0.12s;

@@ -1,10 +1,12 @@
 <script lang="ts">
+  import { fade, fly } from 'svelte/transition';
   import { app } from '../lib/app.svelte';
-  import { modeInfo } from '../lib/modes';
+  import { MODES, modeInfo } from '../lib/modes';
   import { configFor } from '../lib/engine/room';
   import type { DuelConfig } from '../lib/types';
   import { sfx } from '../lib/audio/sfx';
   import Avatar from '../components/Avatar.svelte';
+  import ModeIcon from '../components/ModeIcon.svelte';
 
   const s = app.session!;
   const room = $derived(s.room!);
@@ -12,121 +14,293 @@
   const cfg = $derived(configFor(room) as DuelConfig);
   const iAmReady = $derived(!!room.ready[s.me]);
   const oppReady = $derived(!!(app.opp && room.ready[app.opp.id]));
-  let more = $state(false);
+  let rules = $state(false);
+  let dir = $state(1);
 
   function set(patch: Partial<DuelConfig>) {
     sfx.click();
     s.send({ t: 'config', mode: room.mode, config: { ...cfg, ...patch } });
   }
 
-  const times = [
-    { v: 180, l: '3′' },
-    { v: 300, l: '5′' },
-    { v: 600, l: '10′' },
-    { v: 0, l: '∞' },
-  ];
+  function step(d: number) {
+    sfx.click();
+    dir = d;
+    const i = MODES.findIndex((m) => m.id === room.mode);
+    const next = MODES[(i + d + MODES.length) % MODES.length];
+    s.send({ t: 'selectMode', mode: next.id });
+  }
+
+  const times = [180, 300, 600, 0];
+  const timeLabel = (v: number) => (v ? `${v / 60}′` : '∞');
+
+  const rows = $derived([
+    { k: 'Vidas', label: String(cfg.lives), v: cfg.lives / 5 },
+    { k: 'Tiempo', label: timeLabel(cfg.timeLimitSec), v: cfg.timeLimitSec ? cfg.timeLimitSec / 600 : 1 },
+    ...info.bars.map((b) => ({ k: b.k, label: '', v: b.v })),
+  ]);
 </script>
 
-<div class="screen modescreen">
-  <div class="head">
-    <button class="link" onclick={() => s.send({ t: 'toLobby' })}>← Modos</button>
-    <span class="eyebrow">{info.category.toLowerCase()}</span>
+<div class="screen ms" style="--mc:{info.color}">
+  <div class="top">
+    <button class="link" onclick={() => s.send({ t: 'toLobby' })}>← Volver</button>
+    <span class="count num">{MODES.findIndex((m) => m.id === room.mode) + 1}/{MODES.length}</span>
+    <button class="link" onclick={() => (rules = true)}>Reglas</button>
   </div>
 
-  <div class="intro stagger">
-    <h1 class="display">{info.name}</h1>
-    <p class="summary">{info.summary}</p>
-    <button class="link more" onclick={() => (more = !more)}>{more ? 'Ocultar reglas' : 'Ver reglas completas'}</button>
-    {#if more}
-      <ol class="details">
-        {#each info.details as d}<li>{d}</li>{/each}
-      </ol>
-    {/if}
+  <!-- Escaparate -->
+  <div class="show">
+    <button class="arrow l" onclick={() => step(-1)} aria-label="Modo anterior">
+      <svg viewBox="0 0 24 40"><path d="M20 2 4 20l16 18" /></svg>
+    </button>
+    {#key info.id}
+      <div class="stage" in:fly={{ x: 80 * dir, duration: 260 }}>
+        <div class="disc"></div>
+        <span class="art"><ModeIcon d={info.icon} size={120} stroke={3} /></span>
+        <h1 class="display">{info.name}</h1>
+        <p class="tag">{info.available ? info.tag : 'Próximamente'}</p>
+      </div>
+    {/key}
+    <button class="arrow r" onclick={() => step(1)} aria-label="Modo siguiente">
+      <svg viewBox="0 0 24 40"><path d="M4 2l16 18L4 38" /></svg>
+    </button>
   </div>
 
-  <div class="opts">
-    <div class="row-set">
-      <span><b>Tiempo</b><small>Al acabar gana quien tenga más vidas</small></span>
-      <div class="seg">
+  <!-- Panel de estadísticas -->
+  <div class="panel">
+    {#each rows as r, i}
+      <div class="row">
+        <span class="k">{r.k}</span>
+        {#if r.label}<span class="val num">{r.label}</span>{/if}
+        <span class="bar"><i style="width:{Math.round(r.v * 100)}%;animation-delay:{i * 50}ms"></i></span>
+      </div>
+    {/each}
+  </div>
+
+  {#if info.available}
+    <div class="opts">
+      <div class="seg" role="group" aria-label="Tiempo">
         {#each times as t}
-          <button class:on={cfg.timeLimitSec === t.v} onclick={() => set({ timeLimitSec: t.v })}>{t.l}</button>
+          <button class:on={cfg.timeLimitSec === t} onclick={() => set({ timeLimitSec: t })}>{timeLabel(t)}</button>
         {/each}
       </div>
+      <div class="vars">
+        <button class="var" class:on={cfg.oneInChamber} onclick={() => set({ oneInChamber: !cfg.oneInChamber })}>
+          <span class="chk">{cfg.oneInChamber ? '✓' : '+'}</span><span>Un solo dardo</span>
+        </button>
+        <button class="var" class:on={cfg.confirmedKill} onclick={() => set({ confirmedKill: !cfg.confirmedKill })}>
+          <span class="chk">{cfg.confirmedKill ? '✓' : '+'}</span><span>Baja confirmada</span>
+        </button>
+      </div>
     </div>
-    <button class="row-set" onclick={() => set({ oneInChamber: !cfg.oneInChamber })}>
-      <span><b>Una en la recámara</b><small>Un solo dardo. Si fallas, ve a por él.</small></span>
-      <span class="toggle" class:on={cfg.oneInChamber}></span>
-    </button>
-    <button class="row-set" onclick={() => set({ confirmedKill: !cfg.confirmedKill })}>
-      <span><b>Baja confirmada</b><small>Solo cuenta si el tirador recoge su dardo. 10 s para anular.</small></span>
-      <span class="toggle" class:on={cfg.confirmedKill}></span>
-    </button>
-  </div>
+  {/if}
 
   <div class="grow"></div>
 
-  <div class="readyrow">
+  <div class="ready-row">
     {#each [app.me, app.opp] as p}
       {#if p}
         <span class="rp" class:ok={room.ready[p.id]}>
           <Avatar icon={p.icon} color={p.color} size={26} />
-          {p.name}
-          <i>{room.ready[p.id] ? 'listo' : '…'}</i>
+          <span>{p.name}</span>
+          <b>{room.ready[p.id] ? 'LISTO' : '…'}</b>
         </span>
       {/if}
     {/each}
   </div>
-  <button class="btn ready" class:ghost={iAmReady} onclick={() => app.ready(!iAmReady)}>
-    {iAmReady ? (oppReady ? '¡Vamos!' : 'Esperando… (cancelar)') : '¡Listo!'}
+  <button class="btn go" class:ghost={iAmReady} disabled={!info.available} onclick={() => app.ready(!iAmReady)}>
+    {!info.available ? 'Pronto' : iAmReady ? (oppReady ? '¡Vamos!' : 'Esperando…') : '¡Listo!'}
   </button>
 </div>
 
+{#if rules}
+  <div class="sheet" transition:fade={{ duration: 120 }} onclick={() => (rules = false)} role="presentation">
+    <div class="card" in:fly={{ y: 60, duration: 220 }}>
+      <h2 class="display">{info.name}</h2>
+      <p class="sum">{info.summary}</p>
+      {#if info.details.length}
+        <ul>
+          {#each info.details as d}<li>{d}</li>{/each}
+          <li><b>Un solo dardo:</b> empezáis con 1. Si fallas, ve a por él.</li>
+          <li><b>Baja confirmada:</b> solo vale si el tirador recoge su dardo. 10 s para anular.</li>
+        </ul>
+      {/if}
+      <button class="btn small">Entendido</button>
+    </div>
+  </div>
+{/if}
+
 <style>
-  .modescreen {
-    gap: 14px;
+  .ms {
+    gap: clamp(8px, 1.6vh, 14px);
   }
-  .head {
+  .top {
     display: flex;
     justify-content: space-between;
     align-items: center;
   }
-  .intro {
+  .top .link {
+    padding: 4px 0;
+  }
+  .count {
+    font-size: 18px;
+    color: var(--mute);
+  }
+
+  /* Escaparate con flechas */
+  .show {
+    position: relative;
+    display: grid;
+    grid-template-columns: 34px 1fr 34px;
+    align-items: center;
+    height: clamp(170px, 28vh, 250px);
+    flex: none;
+  }
+  .stage {
+    position: relative;
+    height: 100%;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    justify-content: flex-end;
+    align-items: center;
+    text-align: center;
+    padding-bottom: 6px;
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .disc {
+    position: absolute;
+    left: 50%;
+    bottom: 26%;
+    width: 78%;
+    aspect-ratio: 3.2;
+    transform: translateX(-50%);
+    border-radius: 50%;
+    background: radial-gradient(closest-side, color-mix(in srgb, var(--mc) 55%, transparent), transparent);
+    box-shadow:
+      0 0 0 2px color-mix(in srgb, var(--mc) 80%, transparent),
+      0 0 30px color-mix(in srgb, var(--mc) 50%, transparent);
+  }
+  .art {
+    position: absolute;
+    left: 50%;
+    top: 4%;
+    transform: translateX(-50%);
+    color: var(--mc);
+    filter: drop-shadow(0 0 16px color-mix(in srgb, var(--mc) 60%, transparent));
+    animation: hover 2.6s ease-in-out infinite;
+  }
+  .art :global(svg) {
+    width: clamp(78px, 14vh, 120px);
+    height: clamp(78px, 14vh, 120px);
+  }
+  @keyframes hover {
+    50% {
+      transform: translate(-50%, -6px);
+    }
   }
   h1 {
-    font-size: 104px;
-    color: var(--me);
+    position: relative;
+    font-size: clamp(46px, 8.5vh, 84px);
+    color: var(--paper);
+    text-shadow: 0 4px 18px rgba(0, 0, 0, 0.6);
   }
-  .summary {
-    font-size: 21px;
-    font-weight: 600;
-    line-height: 1.25;
-    margin: 0;
-    max-width: 26ch;
+  .tag {
+    position: relative;
+    margin: 4px 0 0;
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--mc);
   }
-  .more {
-    align-self: flex-start;
-    text-decoration: underline;
-    text-underline-offset: 3px;
+  .arrow {
+    appearance: none;
+    border: none;
+    background: none;
+    padding: 0;
+    height: 64px;
+    z-index: 2;
   }
-  .details {
-    margin: 0;
-    padding-left: 20px;
-    font-size: 14px;
+  .arrow.l {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .arrow.r {
+    grid-column: 3;
+    grid-row: 1;
+  }
+  .arrow svg {
+    width: 22px;
+    height: 40px;
+    fill: none;
+    stroke: var(--me);
+    stroke-width: 5;
+  }
+  .arrow:active svg {
+    transform: scale(0.85);
+  }
+
+  /* Panel de estadísticas */
+  .panel {
+    background: var(--bg-2);
+    border-radius: 6px;
+    border-top: 3px solid var(--mc);
+    padding: 6px 12px 8px;
+    display: flex;
+    flex-direction: column;
+  }
+  .row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto 6px;
+    align-items: end;
+    column-gap: 8px;
+    padding: 4px 0;
+  }
+  .k {
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
     color: var(--mute);
-    line-height: 1.55;
   }
+  .val {
+    font-size: 20px;
+    line-height: 1;
+  }
+  .bar {
+    grid-column: 1 / -1;
+    height: 6px;
+    background: var(--bg-3);
+    margin-top: 3px;
+    transform: skewX(-20deg);
+    overflow: hidden;
+  }
+  .bar i {
+    display: block;
+    height: 100%;
+    background: var(--mc);
+    animation: fill 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    transform-origin: left;
+  }
+  @keyframes fill {
+    from {
+      transform: scaleX(0);
+    }
+  }
+
   .opts {
-    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
   }
   .seg {
-    display: flex;
-    flex: none;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
     background: var(--bg-2);
-    border-radius: 4px;
-    padding: 3px;
+    border-radius: 6px;
+    padding: 4px;
+    gap: 4px;
   }
   .seg button {
     appearance: none;
@@ -134,53 +308,134 @@
     background: none;
     color: var(--mute);
     font-family: var(--display);
-    font-weight: 800;
-    font-size: 20px;
-    min-width: 42px;
-    padding: 6px 6px;
-    border-radius: 3px;
+    font-weight: 900;
+    font-size: 22px;
+    height: 40px;
+    border-radius: 4px;
   }
   .seg button.on {
     background: var(--me);
     color: var(--me-ink);
   }
+  .vars {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .var {
+    appearance: none;
+    border: 2px solid var(--bg-3);
+    background: transparent;
+    color: var(--paper);
+    border-radius: 6px;
+    height: 46px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 10px;
+    font-family: var(--display);
+    font-weight: 800;
+    font-size: 18px;
+    text-transform: uppercase;
+    text-align: left;
+    line-height: 1;
+  }
+  .var.on {
+    border-color: var(--me);
+    background: color-mix(in srgb, var(--me) 18%, transparent);
+  }
+  .chk {
+    flex: none;
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+    display: grid;
+    place-items: center;
+    background: var(--bg-3);
+    font-size: 15px;
+  }
+  .var.on .chk {
+    background: var(--me);
+    color: var(--me-ink);
+  }
   .grow {
     flex: 1;
+    min-height: 0;
   }
-  .readyrow {
+  .ready-row {
     display: flex;
     justify-content: space-between;
-    gap: 12px;
+    gap: 8px;
   }
   .rp {
     display: flex;
     align-items: center;
     gap: 8px;
+    min-width: 0;
     font-family: var(--display);
-    font-weight: 800;
-    font-size: 20px;
+    font-weight: 900;
+    font-size: 19px;
     text-transform: uppercase;
-    opacity: 0.5;
+    opacity: 0.45;
+    transition: opacity 0.2s;
   }
-  .rp i {
-    font-family: var(--body);
-    font-style: normal;
+  .rp span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .rp b {
     font-size: 12px;
-    font-weight: 600;
-    text-transform: none;
     color: var(--mute);
   }
   .rp.ok {
     opacity: 1;
   }
-  .rp.ok i {
+  .rp.ok b {
     color: var(--ok);
   }
-  .ready {
-    min-height: 84px;
-    font-size: 44px;
+  .go {
+    min-height: clamp(62px, 10vh, 84px);
+    font-size: 42px;
+    flex: none;
   }
-  .ready.ghost {
+  .go.ghost {
     font-size: 26px;
+  }
+  .sheet {
+    position: fixed;
+    inset: 0;
+    z-index: 120;
+    background: rgba(10, 10, 10, 0.88);
+    display: flex;
+    align-items: flex-end;
+  }
+  .card {
+    width: 100%;
+    background: var(--bg-2);
+    border-radius: 12px 12px 0 0;
+    padding: 20px 20px calc(var(--sab) + 20px);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  h2 {
+    font-size: 44px;
+    color: var(--mc);
+  }
+  .sum {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+  }
+  ul {
+    margin: 0;
+    padding-left: 18px;
+    font-size: 15px;
+    line-height: 1.5;
+    color: var(--paper);
+  }
+  li b {
+    color: var(--mc);
   }
 </style>

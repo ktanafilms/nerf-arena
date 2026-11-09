@@ -3,7 +3,7 @@
 
 import type { DuelConfig, Game, GEvent, Intent, Profile, Room } from '../types';
 import { COLORS } from '../types';
-import { defaultConfig } from '../modes';
+import { defaultConfig, modeInfo } from '../modes';
 
 export const COUNTDOWN_MS = 3600; // 3-2-1 (+ margen) antes del ¡YA!
 export const RESUME_MS = 3000;
@@ -126,6 +126,7 @@ export function applyIntent(room: Room, pid: string, it: Intent, now: number): b
       return true;
     case 'ready': {
       if (room.screen === 'game' && g && g.phase !== 'ended') return false;
+      if (!modeInfo(room.mode).available) return false;
       room.ready[pid] = it.ready;
       const all = room.players.length === 2 && room.players.every((p) => room.ready[p.id]);
       if (all) {
