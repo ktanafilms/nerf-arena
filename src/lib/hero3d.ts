@@ -134,6 +134,7 @@ export function mountHero3D(canvas: HTMLCanvasElement, color: string, onModel?: 
   new GLTFLoader().load(
     MODEL_URL,
     (gltf) => {
+      fixTransparency(gltf.scene);
       place(gltf.scene);
       onModel?.(true);
     },
@@ -254,6 +255,34 @@ export function mountHero3D(canvas: HTMLCanvasElement, color: string, onModel?: 
       renderer.dispose();
     },
   };
+}
+
+/**
+ * El modelo trae un único material semitransparente y de doble cara: en móvil eso hace
+ * que se vean piezas por dentro y parpadeos. Se pinta en dos pasadas:
+ * 1) lo sólido, opaco y con profundidad; 2) encima, solo lo translúcido (el cargador).
+ */
+function fixTransparency(root: THREE.Object3D) {
+  const extra: [THREE.Object3D, THREE.Mesh][] = [];
+  root.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const mat = mesh.material as THREE.MeshStandardMaterial;
+    if (!mat || Array.isArray(mat) || !mat.transparent) return;
+    const solid = mat.clone();
+    solid.transparent = false;
+    solid.alphaTest = 0.92;
+    solid.depthWrite = true;
+    mesh.material = solid;
+    const glass = mat.clone();
+    glass.transparent = true;
+    glass.depthWrite = false;
+    glass.side = THREE.FrontSide;
+    const copy = new THREE.Mesh(mesh.geometry, glass);
+    copy.renderOrder = 1;
+    extra.push([mesh, copy]);
+  });
+  extra.forEach(([mesh, copy]) => mesh.add(copy));
 }
 
 /** Pistola de juguete original hecha con primitivas (respaldo si no hay modelo). */
