@@ -2,11 +2,12 @@
   // Ventana para generar y guardar el vídeo del HUD (fondo transparente).
   import { fade, fly } from 'svelte/transition';
   import type { Room } from '../lib/types';
-  import type { Format } from '../lib/overlay/render';
+  import type { Format, Gaps } from '../lib/overlay/render';
   import { exportHud, SYNC_NOTE, type ExportResult } from '../lib/overlay/export';
   import { app } from '../lib/app.svelte';
 
-  let { room, onclose }: { room: Room; onclose: () => void } = $props();
+  let { rooms, gaps = 'real', onclose }: { rooms: Room[]; gaps?: Gaps; onclose: () => void } = $props();
+  const many = $derived(rooms.length > 1);
   let format = $state<Format>('16:9');
   let busy = $state(false);
   let progress = $state(0);
@@ -21,7 +22,7 @@
     progress = 0;
     cancelled = false;
     try {
-      result = await exportHud(room, format, (f) => (progress = f), () => cancelled);
+      result = await exportHud(rooms, format, (f) => (progress = f), () => cancelled, gaps);
     } catch (e: any) {
       if (!cancelled) error = e?.message ?? String(e);
     } finally {
@@ -52,6 +53,7 @@
   }
 
   const mb = (b: number) => (b / 1024 / 1024).toFixed(1).replace('.', ',');
+  const dur = (s: number) => (s < 120 ? `${Math.round(s)} s` : s < 3600 ? `${Math.round(s / 60)} min` : `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min`);
 </script>
 
 <div class="sheet" transition:fade={{ duration: 120 }}>
@@ -61,8 +63,13 @@
       <button class="link" onclick={() => ((cancelled = true), onclose())}>Cerrar</button>
     </div>
     <p class="body">
-      Un .mov con fondo transparente con el marcador, las jugadas y el resultado, para ponerlo encima de vuestras cámaras.
-      {SYNC_NOTE}
+      {#if many}
+        Un solo .mov transparente con las {rooms.length} partidas {gaps === 'real' ? 'a su hora real' : 'seguidas'}, para ponerlo encima de vuestras cámaras.
+        Cada partida tiene su ¡YA!; el primero está en el segundo 3.
+      {:else}
+        Un .mov con fondo transparente con el marcador, las jugadas y el resultado, para ponerlo encima de vuestras cámaras.
+        {SYNC_NOTE}
+      {/if}
     </p>
 
     <div class="formats">
@@ -81,7 +88,7 @@
       <button class="btn ghost small" onclick={() => (cancelled = true)}>Cancelar</button>
     {:else if result}
       <p class="ok">
-        Listo: {Math.round(result.seconds)} s · {mb(result.blob.size)} MB
+        Listo: {result.games > 1 ? `${result.games} partidas · ` : ''}{dur(result.seconds)} · {mb(result.blob.size)} MB
       </p>
       <button class="btn" onclick={save}>Guardar vídeo</button>
       <p class="tip">En iPhone: «Guardar en Archivos» o AirDrop al ordenador. Fotos quita la transparencia.</p>
@@ -116,7 +123,7 @@
     align-items: center;
   }
   h2 {
-    font-size: 44px;
+    font-size: clamp(32px, 6vh, 44px);
   }
   .formats {
     display: grid;

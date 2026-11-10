@@ -97,7 +97,7 @@
     overflow: hidden;
   }
   .call {
-    font-size: min(calc((100cqh - 60px) / 0.8), 70cqw, 360px);
+    font-size: max(48px, min(calc((100cqh - 60px) / 0.8), 70cqw, 360px));
     line-height: 0.78;
   }
   .t1 {

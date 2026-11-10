@@ -11,6 +11,7 @@
   import { sfx, vibrate } from '../lib/audio/sfx';
   import { say } from '../lib/audio/narrator';
   import { voice } from '../lib/voice/recognizer.svelte';
+  import { remote } from '../lib/remote.svelte';
   import { SoloSession } from '../lib/net/session.svelte';
   import MicIndicator from '../components/MicIndicator.svelte';
   import Lives from '../components/Lives.svelte';
@@ -290,7 +291,10 @@
             {/each}
           </div>
         {:else if !bombPhone}
-          <div class="hint">Doble toque: {g.mode === 'blanco' ? '¡mía!' : 'tocado'}<br />Mantener: anular</div>
+          <div class="hint">
+            Doble toque: {g.mode === 'blanco' ? '¡mía!' : 'tocado'}<br />Mantener: anular
+            {#if remote.on}<br /><b class:off={!remote.armed}>Cascos: 1 {g.mode === 'blanco' ? 'mía' : 'tocado'} · 2 estado · 3 anular</b>{/if}
+          </div>
         {:else}
           <span></span>
         {/if}
@@ -515,6 +519,9 @@
     font-weight: 600;
     opacity: 0.6;
     line-height: 1.4;
+  }
+  .hint b.off {
+    text-decoration: line-through;
   }
   .pausebtn {
     flex: none;
@@ -975,6 +982,60 @@
   .iscore .dash {
     opacity: 0.5;
   }
+  /* ── pantallas muy bajas (horizontal, móviles pequeños): todo más compacto
+        para que el número grande de cada modo siga teniendo sitio ── */
+  @media (max-height: 520px) {
+    .oppband {
+      padding: calc(var(--sat) + 6px) calc(var(--sar) + 16px) 12px calc(var(--sal) + 16px);
+    }
+    .oname {
+      font-size: 24px;
+    }
+    .oname :global(.av) {
+      width: 26px !important;
+      height: 26px !important;
+    }
+    .onum {
+      font-size: 60px;
+    }
+    .meta {
+      padding-top: 2px;
+    }
+    .rec {
+      font-size: 16px;
+    }
+    .foot {
+      padding-bottom: calc(var(--sab) + 8px);
+    }
+    .pausebtn {
+      width: 52px;
+      height: 52px;
+    }
+    .hint {
+      display: none;
+    }
+    .botpanel {
+      margin-bottom: 4px;
+      padding: 4px;
+    }
+    .botpanel button {
+      font-size: 15px;
+      padding: 5px 4px;
+    }
+    .modebody :global(.myname) {
+      font-size: 26px;
+    }
+    .modebody :global(.timer) {
+      margin: 0 0 4px;
+    }
+  }
+  /* En horizontal, los márgenes laterales respetan la muesca */
+  .meta,
+  .foot {
+    padding-left: calc(var(--sal) + 20px);
+    padding-right: calc(var(--sar) + 20px);
+  }
+
   /* ── modo grabación: solo lo que aporta en vídeo ── */
   .recmode .hint,
   .recmode .botpanel,

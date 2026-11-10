@@ -70,7 +70,7 @@
   }
   .mnum {
     font-size: min(40vh, 360px);
-    font-size: min(calc((100cqh - 40px) / 0.8), 80cqw, 380px);
+    font-size: max(48px, min(calc((100cqh - 40px) / 0.8), 80cqw, 380px));
     line-height: 0.76;
     letter-spacing: -0.03em;
   }

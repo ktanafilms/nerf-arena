@@ -28,6 +28,8 @@
   --body: 'Archivo', system-ui, sans-serif;
   --sat: env(safe-area-inset-top, 0px);
   --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
   --slant: 14px;
   color-scheme: dark;
 }
@@ -76,9 +78,31 @@ body {
   display: flex;
   flex-direction: column;
   /* Todo cabe en pantalla: nada de scroll vertical */
-  padding: calc(var(--sat) + clamp(12px, 2.5vh, 20px)) 18px calc(var(--sab) + clamp(12px, 2.5vh, 20px));
-  overflow: hidden;
+  padding: calc(var(--sat) + clamp(12px, 2.5vh, 20px)) calc(var(--sar) + 18px) calc(var(--sab) + clamp(12px, 2.5vh, 20px)) calc(var(--sal) + 18px);
+  /* Pensado para caber sin scroll; si una pantalla es muy baja (Safari con barras, móvil
+     pequeño, horizontal…), se puede deslizar en vez de quedar cortada */
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
   min-height: 0;
+}
+.screen::-webkit-scrollbar {
+  display: none;
+}
+/* El botón principal de abajo queda fijo aunque la pantalla tenga que deslizarse */
+.screen > .btn:last-child {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  flex: none;
+  box-shadow: 0 -12px 16px var(--bg);
+}
+/* Ventanas emergentes: nunca más altas que la pantalla */
+.sheet > .card {
+  max-height: calc(100% - var(--sat));
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 /* Tipografía */

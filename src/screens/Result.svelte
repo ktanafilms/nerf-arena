@@ -7,6 +7,7 @@
   import { modeInfo } from '../lib/modes';
   import Avatar from '../components/Avatar.svelte';
   import ExportSheet from '../components/ExportSheet.svelte';
+  import { history } from '../lib/history.svelte';
 
   const s = app.session!;
   const room = $derived(s.room!);
@@ -21,6 +22,8 @@
   const duration = $derived(gameTime(g, g.endedAt ?? s.now()));
 
   let hud = $state(false);
+  // Todas las partidas de esta sesión (revanchas incluidas), para sacarlas en un solo vídeo
+  const session = $derived(hud ? history.sessionOf(room) : []);
 
   async function copy() {
     const text = timeline(room);
@@ -142,7 +145,9 @@
         {iReady ? (oppReady ? '¡Vamos!' : 'Esperando al rival…') : oppReady ? 'Revancha · te espera' : 'Revancha'}
       </button>
       <div class="two">
-        <button class="btn ghost small" onclick={() => (hud = true)}>Para el vídeo</button>
+        <button class="btn ghost small" onclick={() => (hud = true)}>
+          Para el vídeo{history.sessionOf(room).length > 1 ? ` · ${history.sessionOf(room).length}` : ''}
+        </button>
         <button class="btn ghost small" onclick={() => s.send({ t: 'toLobby' })}>Otro modo</button>
       </div>
       <button class="link copy" onclick={copy}>Copiar línea de tiempo</button>
@@ -151,7 +156,7 @@
 </div>
 
 {#if hud}
-  <ExportSheet {room} onclose={() => (hud = false)} />
+  <ExportSheet rooms={session} current={room} onclose={() => (hud = false)} />
 {/if}
 
 <style>
@@ -221,8 +226,17 @@
     display: flex;
     flex-direction: column;
     gap: clamp(8px, 1.8vh, 18px);
-    padding: 0 18px calc(var(--sab) + clamp(12px, 2.5vh, 20px));
+    padding: 0 calc(var(--sar) + 18px) 0 calc(var(--sal) + 18px);
     min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+  }
+  .rest::-webkit-scrollbar {
+    display: none;
+  }
+  .rest > * {
+    flex: none;
   }
   .sh,
   .sr {
@@ -284,6 +298,21 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
+    position: sticky;
+    bottom: 0;
+    background: var(--bg);
+    padding: 8px 0 calc(var(--sab) + clamp(10px, 2vh, 18px));
+  }
+  @media (max-height: 640px) {
+    .verdict {
+      font-size: min(18vw, 11vh, 120px);
+    }
+    .sr b {
+      font-size: 24px;
+    }
+    .actions .btn:not(.small) {
+      min-height: 56px;
+    }
   }
   .two {
     display: grid;

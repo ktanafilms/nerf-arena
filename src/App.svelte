@@ -18,6 +18,24 @@
   // Solo en desarrollo: ?demo=lobby|mode|game|result para revisar pantallas
   if (import.meta.env.DEV) {
     (window as any).__app = app;
+    // Revisión de encaje: elementos visibles que se salen de la pantalla
+    (window as any).__overflow = () => {
+      const W = innerWidth,
+        H = innerHeight;
+      const out: string[] = [];
+      for (const el of document.querySelectorAll<HTMLElement>('#app button, #app input, #app h1, #app h2, #app p, #app .num, #app span')) {
+        const r = el.getBoundingClientRect();
+        if (!r.width || !r.height) continue;
+        const st = getComputedStyle(el);
+        if (st.visibility === 'hidden' || st.opacity === '0') continue;
+        if (el.closest('.art, .grain, .wipe, .hitmarker')) continue;
+        if (r.bottom > H + 1 || r.top < -1 || r.right > W + 1 || r.left < -1) {
+          const t = (el.textContent ?? '').trim().slice(0, 24) || el.tagName;
+          out.push(`${el.tagName.toLowerCase()}.${el.className.toString().split(' ')[0]} «${t}» [${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)}]`);
+        }
+      }
+      return out;
+    };
     const demo = params.get('demo');
     if (params.has('still')) {
       const st = document.createElement('style');

@@ -9,7 +9,8 @@
   import ExportSheet from '../components/ExportSheet.svelte';
   import Avatar from '../components/Avatar.svelte';
 
-  let open = $state<SavedGame | null>(null);
+  let open = $state<{ rooms: SavedGame['room'][]; current: SavedGame['room'] | null } | null>(null);
+  const days = $derived(history.byDay());
   let confirmDel = $state<number | null>(null);
   const totals = $derived(history.totals());
 
@@ -34,12 +35,21 @@
     {#if !history.games.length}
       <p class="empty">Aquí aparecerán vuestras partidas terminadas para sacar el vídeo del HUD y los marcadores cuando queráis.</p>
     {/if}
-    {#each history.games as s (s.id)}
+    {#each days as d (d.day)}
+      <div class="dayhead">
+        <span>{d.label}</span>
+        {#if d.games.length > 1}
+          <button class="dayvid" onclick={() => (open = { rooms: d.games.map((x) => x.room).reverse(), current: null })}>
+            Vídeo del día · {d.games.length}
+          </button>
+        {/if}
+      </div>
+    {#each d.games as s (s.id)}
       {@const g = s.room.game!}
       {@const w = s.room.players.find((p) => p.id === g.winner)}
       {@const mi = modeInfo(g.mode)}
       <div class="item" style="--mc:{mi.color}">
-        <button class="main" onclick={() => (open = s)}>
+        <button class="main" onclick={() => (open = { rooms: history.sessionOf(s.room), current: s.room })}>
           <span class="mode">{mi.name}</span>
           <span class="vs">
             {#each s.room.players as p, i}
@@ -57,11 +67,12 @@
         {/if}
       </div>
     {/each}
+    {/each}
   </div>
 </div>
 
 {#if open}
-  <ExportSheet room={open.room} onclose={() => (open = null)} />
+  <ExportSheet rooms={open.rooms} current={open.current} onclose={() => (open = null)} />
 {/if}
 
 <style>
@@ -109,6 +120,34 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
+  }
+  .dayhead {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--mute);
+  }
+  .dayvid {
+    appearance: none;
+    border: none;
+    background: var(--me);
+    color: var(--me-ink);
+    font-family: var(--display);
+    font-weight: 900;
+    font-size: 15px;
+    text-transform: uppercase;
+    padding: 5px 10px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .list > * {
+    flex: none;
   }
   .empty {
     color: var(--mute);

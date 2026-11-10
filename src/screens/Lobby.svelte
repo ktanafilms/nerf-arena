@@ -10,6 +10,7 @@
   import Avatar from '../components/Avatar.svelte';
   import ModeIcon from '../components/ModeIcon.svelte';
   import NetSheet from '../components/NetSheet.svelte';
+  import HeadsetSheet from '../components/HeadsetSheet.svelte';
 
   const s = app.session!;
   const room = $derived(s.room!);
@@ -21,6 +22,7 @@
   const waiting = $derived(s.kind === 'host' && !opp?.connected);
   let showQR = $state(false);
   let net = $state(false);
+  let headset = $state(false);
   const qrOpen = $derived(waiting || showQR);
 
   const mc = $derived(colorDef(me?.color ?? 'naranja'));
@@ -116,6 +118,9 @@
         app.showToast(app.prefs.recordingMode ? 'Modo grabación: la partida solo muestra lo que aporta en vídeo' : 'Modo grabación desactivado', 2600);
       }}><i></i>Modo grabación</button
     >
+    {#if s.kind !== 'local'}
+      <button class="recbtn" class:on={app.prefs.headset} class:hs={app.prefs.headset} onclick={() => (headset = true)}><i></i>Cascos</button>
+    {/if}
     <button
       class="link"
       onclick={() => {
@@ -149,6 +154,9 @@
 
 {#if net}
   <NetSheet onclose={() => (net = false)} />
+{/if}
+{#if headset}
+  <HeadsetSheet onclose={() => (headset = false)} />
 {/if}
 
 <style>
@@ -397,19 +405,22 @@
     position: relative;
     font-family: var(--display);
     font-weight: 900;
-    font-size: clamp(22px, 3.6vh, 32px);
+    /* se adapta al alto y al ancho: en móviles estrechos los nombres largos no pisan la franja */
+    font-size: clamp(17px, min(3.6vh, 7vw), 32px);
     text-transform: uppercase;
     line-height: 0.9;
-    padding: 0 6px;
-    margin-bottom: 18%;
+    padding: 4px 6px;
+    /* el nombre ocupa el hueco que deja la franja: nunca se pisan */
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    place-items: center;
     text-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
     overflow-wrap: anywhere;
   }
   .mtag {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    flex: none;
+    align-self: stretch;
     padding: 6px 6px 7px;
     background: rgba(0, 0, 0, 0.55);
     font-size: 10.5px;
@@ -422,6 +433,12 @@
   .locked {
     filter: grayscale(1) brightness(0.55);
   }
+  @media (max-width: 360px), (max-height: 600px) {
+    .mtag {
+      font-size: 9.5px;
+      padding: 4px 4px 5px;
+    }
+  }
   .lock {
     position: absolute;
     top: 8px;
@@ -432,8 +449,17 @@
   }
   .foot {
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
     align-items: center;
+    gap: 6px;
+  }
+  .recbtn.hs {
+    background: color-mix(in srgb, var(--ok) 25%, var(--bg-2));
+  }
+  .recbtn.hs i {
+    background: var(--ok);
+    animation: none;
   }
   .recbtn {
     appearance: none;

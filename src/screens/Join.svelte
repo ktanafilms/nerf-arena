@@ -11,8 +11,20 @@
     if (!initial) input?.focus();
   });
 
+  let going = false;
   function go() {
-    if (code.length === 4) app.join(code);
+    if (code.length !== 4 || going) return;
+    going = true;
+    input?.blur(); // cierra el teclado
+    app.join(code);
+  }
+
+  function typed(raw: string) {
+    const prev = code;
+    code = normalizeCode(raw);
+    if (input && input.value !== code) input.value = code;
+    // Al escribir la cuarta letra se entra solo (sin buscar el botón bajo el teclado)
+    if (code.length === 4 && prev.length === 3) setTimeout(go, 250);
   }
 </script>
 
@@ -33,22 +45,26 @@
       id="code"
       bind:this={input}
       value={code}
-      oninput={(e) => (code = normalizeCode((e.target as HTMLInputElement).value))}
+      oninput={(e) => typed((e.target as HTMLInputElement).value)}
       onkeydown={(e) => e.key === 'Enter' && go()}
       autocomplete="off"
+      autocorrect="off"
       autocapitalize="characters"
       spellcheck="false"
+      enterkeyhint="go"
+      inputmode="text"
       maxlength="4"
     />
-    <p class="body">O apunta con la cámara del móvil al QR de la otra pantalla.</p>
+    <button class="btn" disabled={code.length !== 4} onclick={go}>Entrar</button>
+    <p class="body">Al escribir la cuarta letra se entra solo. También puedes apuntar con la cámara al QR de la otra pantalla.</p>
   </div>
-
-  <button class="btn" disabled={code.length !== 4} onclick={go}>Entrar</button>
+  <span></span>
 </div>
 
 <style>
   .join {
-    justify-content: space-between;
+    justify-content: flex-start;
+    gap: clamp(14px, 4vh, 40px);
   }
   .head {
     display: flex;
@@ -58,10 +74,10 @@
   .mid {
     display: flex;
     flex-direction: column;
-    gap: 22px;
+    gap: clamp(12px, 2.6vh, 22px);
   }
   h1 {
-    font-size: 76px;
+    font-size: clamp(52px, 10vh, 76px);
   }
   .boxes {
     display: grid;
@@ -69,11 +85,11 @@
     gap: 8px;
   }
   .box {
-    height: 104px;
+    height: clamp(72px, 13vh, 104px);
     display: grid;
     place-items: center;
     font-family: var(--display);
-    font-size: 80px;
+    font-size: clamp(54px, 10vh, 80px);
     font-weight: 900;
     background: var(--bg-2);
     border-radius: 4px;
@@ -90,9 +106,15 @@
   }
   input {
     position: absolute;
+    left: 0;
+    top: 0;
     opacity: 0;
     width: 1px;
     height: 1px;
+    font-size: 16px;
     pointer-events: none;
+  }
+  .boxes {
+    cursor: text;
   }
 </style>

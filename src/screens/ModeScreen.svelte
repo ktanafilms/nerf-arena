@@ -31,8 +31,8 @@
   }
 
   const rows = $derived([
-    ...info.facts(cfg).map((f) => ({ k: f.k, label: f.v, v: f.f })),
-    ...info.bars.map((b) => ({ k: b.k, label: '', v: b.v })),
+    ...info.facts(cfg).map((f) => ({ k: f.k, label: f.v, v: f.f, deco: false })),
+    ...info.bars.map((b) => ({ k: b.k, label: '', v: b.v, deco: true })),
   ]);
 </script>
 
@@ -43,6 +43,7 @@
     <button class="link" onclick={() => (rules = true)}>Reglas</button>
   </div>
 
+  <div class="scroll">
   <!-- Escaparate -->
   <div class="show">
     <button class="arrow l" onclick={() => step(-1)} aria-label="Modo anterior">
@@ -64,7 +65,7 @@
   <!-- Panel de estadísticas -->
   <div class="panel">
     {#each rows as r, i}
-      <div class="row">
+      <div class="row" class:deco={r.deco}>
         <span class="k">{r.k}</span>
         {#if r.label}<span class="val num">{r.label}</span>{/if}
         <span class="bar"><i style="width:{Math.round(r.v * 100)}%;animation-delay:{i * 50}ms"></i></span>
@@ -97,6 +98,7 @@
   {/if}
 
   <div class="grow"><p class="sumtxt">{info.summary}</p></div>
+  </div>
 
   <div class="ready-row">
     {#each [app.me, app.opp] as p}
@@ -388,6 +390,52 @@
   .grow {
     flex: 1;
     min-height: 0;
+  }
+  /* Todo lo de en medio se puede deslizar: «¡Listo!» queda siempre a la vista */
+  .scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+    display: flex;
+    flex-direction: column;
+    gap: clamp(8px, 1.6vh, 14px);
+  }
+  .scroll::-webkit-scrollbar {
+    display: none;
+  }
+  .scroll > * {
+    flex: none;
+  }
+  .scroll > .grow {
+    flex: 1 0 auto;
+  }
+  /* Pantallas bajas: escaparate compacto y sin barras decorativas */
+  @media (max-height: 700px) {
+    .show {
+      height: clamp(120px, 24vh, 170px);
+    }
+    .art :global(svg) {
+      width: clamp(56px, 11vh, 90px);
+      height: clamp(56px, 11vh, 90px);
+    }
+    .row.deco {
+      display: none;
+    }
+    .sumtxt {
+      padding-top: 4px;
+      font-size: 13px;
+    }
+  }
+  @media (max-height: 560px) {
+    .sumtxt {
+      display: none;
+    }
+    .go {
+      min-height: 56px;
+      font-size: 32px;
+    }
   }
   .ready-row {
     display: flex;

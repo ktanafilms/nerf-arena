@@ -11,6 +11,7 @@ App árbitro para partidas de Nerf a 2 jugadores, con un móvil cada uno. Es una
    - Voz: «[tu nombre], tocado / estado / pausa / seguir / anular».
    - Plan B táctil: **doble toque** = tocado, **mantener pulsado** = anular. El botón de pausa siempre está visible.
    - Desde la pausa se puede **terminar la partida** a medias (pide dos toques) y volver a elegir modo.
+   - **Cascos como mando** (lobby › Cascos): 1 toque del botón de reproducir/pausar = tocado («mía» en Tiro al blanco), 2 toques = estado, 3 toques = anular. Los botones de volumen no los puede leer ninguna web; en muchos cascos Bluetooth, mantener + o − salta de pista y eso sí llega (2 o 3 toques).
 5. Para instalarla como app:
    - **iPhone**: Safari › Compartir › Añadir a pantalla de inicio.
    - **Android**: Chrome › menú › Instalar app.
@@ -48,6 +49,15 @@ Al terminar una partida, **Vídeo del HUD** genera en el propio móvil un `.mov`
 - Empieza 3 s antes del ¡YA!: el pitido de claqueta cae justo en el segundo 3.
 - Códec PNG con canal alfa: se abre en Premiere, Final Cut, DaVinci Resolve y After Effects. Ponlo en una pista encima del vídeo de la cámara.
 - En iPhone, guárdalo con «Guardar en Archivos» o pásalo por AirDrop. Si lo guardas en Fotos, se pierde la transparencia.
+
+## Vídeo de toda la sesión
+
+En «Para el vídeo», si habéis hecho revanchas, se elige **Esta partida** o **Toda la sesión**: un solo `.mov` y un solo archivo de marcadores con todas las partidas.
+
+- **Hora real:** cada partida cae a su hora y los descansos quedan transparentes. Casa con una grabación larga sin cortes.
+- **Seguidas:** una detrás de otra, sin descansos. Cada partida conserva su ¡YA! para sincronizar.
+- En el **Historial**, «Vídeo del día» junta todas las partidas de ese día.
+- Tamaño orientativo: unos 13 MB por minuto de juego (los descansos no ocupan).
 
 ## Historial, marcadores y modo grabación
 

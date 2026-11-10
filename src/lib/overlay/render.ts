@@ -440,3 +440,62 @@ function drawEnd(ctx: CanvasRenderingContext2D, p: Prepared, sb: Scoreboard | un
   }
   ctx.restore();
 }
+
+// ───────────── varias partidas en un solo vídeo ─────────────
+
+/**
+ * real: cada partida en su hora real (los descansos quedan transparentes), para casar con una
+ *       grabación larga y continua de la cámara.
+ * seguidas: una detrás de otra con 2 s de separación.
+ */
+export type Gaps = 'real' | 'seguidas';
+export const JOIN_GAP = 2000;
+
+export interface Segment {
+  p: Prepared;
+  offset: number; // ms del vídeo en que empieza esta partida
+  room: Room;
+}
+export interface Session {
+  W: number;
+  H: number;
+  segments: Segment[];
+  duration: number;
+}
+
+export function prepareSession(rooms: Room[], format: Format, gaps: Gaps = 'real'): Session {
+  const sorted = [...rooms].filter((r) => r.game).sort((a, b) => a.game!.startAt - b.game!.startAt);
+  const segments: Segment[] = [];
+  let end = 0;
+  for (const room of sorted) {
+    const p = prepare(room, format);
+    let offset = segments.length === 0 ? 0 : gaps === 'real' ? p.t0 - segments[0].p.t0 : end + JOIN_GAP;
+    if (offset < end) offset = end; // por si dos partidas se solapan
+    segments.push({ p, offset, room });
+    end = offset + p.duration;
+  }
+  const [W, H] = format === '16:9' ? [1920, 1080] : [1080, 1920];
+  return { W, H, segments, duration: end };
+}
+
+/** Partida que se ve en el ms `v` del vídeo de la sesión (o null en un descanso) */
+export function segmentAt(s: Session, v: number): { i: number; seg: Segment } | null {
+  for (let i = 0; i < s.segments.length; i++) {
+    const seg = s.segments[i];
+    if (v >= seg.offset && v < seg.offset + seg.p.duration) return { i, seg };
+  }
+  return null;
+}
+
+/** Siguiente ms del vídeo en que empieza una partida (para saltar descansos de golpe) */
+export function nextSegmentStart(s: Session, v: number): number {
+  for (const seg of s.segments) if (seg.offset > v) return seg.offset;
+  return s.duration;
+}
+
+export function sessionFrameAt(s: Session, v: number): FrameState {
+  const at = segmentAt(s, v);
+  if (!at) return { key: 'vacío', draw: (ctx) => ctx.clearRect(0, 0, s.W, s.H) };
+  const st = frameAt(at.seg.p, v - at.seg.offset);
+  return { key: `${at.i}#${st.key}`, draw: st.draw };
+}

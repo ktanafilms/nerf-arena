@@ -147,15 +147,23 @@
     background: var(--ok);
   }
   h1 {
-    font-size: 64px;
+    font-size: clamp(44px, 8.5vh, 64px);
+  }
+  .meter {
+    height: clamp(50px, 12vh, 100px) !important;
+  }
+  @media (max-height: 640px) {
+    .diag {
+      max-height: 12vh !important;
+    }
   }
   .say {
-    font-size: 96px;
+    font-size: clamp(54px, 12vh, 96px);
     color: var(--me);
   }
   .good {
     color: var(--ok);
-    font-size: 110px;
+    font-size: clamp(60px, 13vh, 110px);
   }
   .heard {
     margin: 0;

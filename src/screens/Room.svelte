@@ -8,6 +8,7 @@
   import { extraCommands } from '../lib/modes';
   import { SoloSession } from '../lib/net/session.svelte';
   import { history } from '../lib/history.svelte';
+  import { remote, type Press } from '../lib/remote.svelte';
   import Lobby from './Lobby.svelte';
   import ModeScreen from './ModeScreen.svelte';
   import Game from './Game.svelte';
@@ -32,6 +33,19 @@
   });
 
   voice.onCommand = (c: Command, pid?: string) => handle(c, pid);
+
+  // Botones de los cascos (no en «un móvil para los dos»: no se sabría de quién son)
+  const PRESS_CMD: Record<Press, Command> = { single: 'tocado', double: 'estado', triple: 'anular' };
+  $effect(() => {
+    remote.onPress = (p: Press) => {
+      const g = s.room?.game;
+      if (isLocal || !g || g.phase === 'ended' || s.room?.screen !== 'game') return;
+      let c = PRESS_CMD[p];
+      if (c === 'tocado' && g.mode === 'blanco') c = 'mia';
+      handle(c);
+    };
+    return () => (remote.onPress = () => {});
+  });
 
   /** Envía la acción como el jugador `pid` (solo en el modo de un móvil) */
   function act(pid: string | undefined, it: Parameters<typeof s.send>[0]) {

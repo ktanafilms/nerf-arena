@@ -77,7 +77,7 @@
     margin-top: 6px;
   }
   .lv {
-    font-size: min(calc((100cqh - 130px) / 1), 70cqw, 280px);
+    font-size: max(48px, min(calc(100cqh - 130px), 70cqw, 280px));
     line-height: 0.8;
     margin-bottom: 0.14em;
   }
@@ -89,6 +89,19 @@
     text-transform: uppercase;
     line-height: 0.95;
     padding: 0 16px;
+  }
+  /* Poca altura: el número manda; la descripción se encoge */
+  @container (max-height: 230px) {
+    .lv {
+      font-size: max(48px, min(calc(100cqh - 70px), 70cqw));
+    }
+    .lbl {
+      display: none;
+    }
+    .how {
+      margin-top: 2px;
+      font-size: 22px;
+    }
   }
   .burst {
     position: absolute;

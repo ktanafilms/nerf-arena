@@ -52,6 +52,45 @@ class History {
     }
   }
 
+  /**
+   * Partidas de la misma sesión que `room`: misma sala y mismos jugadores, encadenadas
+   * sin descansos de más de 3 horas. Ordenadas de la primera a la última.
+   */
+  sessionOf(room: Room): Room[] {
+    const g = room.game;
+    if (!g) return [room];
+    const names = (r: Room) => r.players.map((p) => p.name.toLowerCase()).sort().join('|');
+    const key = names(room);
+    const same = this.games
+      .filter((x) => x.room.code === room.code && names(x.room) === key && x.room.game)
+      .map((x) => x.room);
+    if (!same.some((r) => r.game!.startAt === g.startAt)) same.push(room);
+    same.sort((a, b) => a.game!.startAt - b.game!.startAt);
+    const i = same.findIndex((r) => r.game!.startAt === g.startAt);
+    const endOf = (r: Room) => r.game!.endedAt ?? r.game!.startAt;
+    let a = i,
+      b = i;
+    while (a > 0 && same[a].game!.startAt - endOf(same[a - 1]) < 3 * 3600_000) a--;
+    while (b < same.length - 1 && same[b + 1].game!.startAt - endOf(same[b]) < 3 * 3600_000) b++;
+    return same.slice(a, b + 1);
+  }
+
+  /** Partidas agrupadas por día (lo más reciente primero) */
+  byDay(): { day: string; label: string; games: SavedGame[] }[] {
+    const out: { day: string; label: string; games: SavedGame[] }[] = [];
+    for (const s of this.games) {
+      const d = new Date(s.room.game?.startAt ?? s.at);
+      const day = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+      let grp = out.find((x) => x.day === day);
+      if (!grp) {
+        grp = { day, label: d.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' }), games: [] };
+        out.push(grp);
+      }
+      grp.games.push(s);
+    }
+    return out;
+  }
+
   /** Victorias por nombre (todas las partidas guardadas) */
   totals() {
     const t = new Map<string, { name: string; wins: number; games: number }>();

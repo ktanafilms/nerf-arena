@@ -8,6 +8,7 @@ import { unlockAudio } from './audio/sfx';
 import { unlockSpeech } from './audio/narrator';
 import { keepAwake } from './device';
 import { voice } from './voice/recognizer.svelte';
+import { remote } from './remote.svelte';
 
 export interface Prefs {
   profile: Profile | null;
@@ -18,6 +19,7 @@ export interface Prefs {
   voiceTested: boolean;
   seenTip: boolean;
   recording: boolean;
+  headset: boolean; // botones de los cascos como mando
 }
 
 const PREFS_KEY = 'nerf.prefs';
@@ -34,6 +36,7 @@ function loadPrefs(): Prefs {
       voiceTested: true,
       seenTip: true,
       recording: false,
+      headset: false,
     };
   }
   const def: Prefs = {
@@ -45,6 +48,7 @@ function loadPrefs(): Prefs {
     voiceTested: false,
     seenTip: false,
     recording: false,
+    headset: false,
   };
   try {
     const p: Prefs = { ...def, ...JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') };
@@ -217,6 +221,7 @@ class App {
 
   leave() {
     voice.stop();
+    remote.stop();
     this.session?.leave();
     this.session = null;
     this.screen = 'home';
@@ -229,6 +234,8 @@ class App {
     // El micro se arranca lo primero dentro del toque (Safari lo exige)
     if (on) voice.start();
     else this.unlock();
+    // Mando de los cascos: también hay que arrancarlo dentro de un toque
+    if (on && this.prefs.headset && this.session?.kind !== 'local') remote.start();
     if (on && !this.prefs.voiceTested) {
       this.voiceTestThen = () => this.session?.send({ t: 'ready', ready: true });
       this.screen = 'voicetest';
