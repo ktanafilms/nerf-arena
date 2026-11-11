@@ -1,0 +1,19 @@
+{
+  "name": "nerf-arena-api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --local --test-scheduled",
+    "db:local": "wrangler d1 execute nerf-arena --local --file=schema.sql",
+    "db:remote": "wrangler d1 execute nerf-arena --remote --file=schema.sql",
+    "vapid": "node scripts/vapid.mjs",
+    "deploy": "wrangler deploy",
+    "check": "tsc --noEmit",
+    "publish": "node scripts/publish.mjs"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261110.1",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.160.0"
+  }
+}

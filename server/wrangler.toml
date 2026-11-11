@@ -1,0 +1,23 @@
+# Servidor de Nerf Arena: cuentas, rivalidades, guerra diaria y notificaciones.
+# Plan gratuito de Cloudflare Workers + base de datos D1.
+name = "nerf-arena-api"
+main = "src/index.ts"
+compatibility_date = "2025-10-01"
+
+# Cada 10 minutos: programa la guerra del día, la lanza y cierra las que acaban
+[triggers]
+crons = ["*/10 * * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "nerf-arena"
+# Lo rellena «wrangler d1 create nerf-arena» al publicar (en local no hace falta)
+database_id = "00000000-0000-0000-0000-000000000000"
+
+[vars]
+# Webs que pueden usar la API
+ORIGINS = "https://ktanafilms.github.io,http://localhost:5173,http://localhost:4173"
+# Dirección de la app (para el enlace de las notificaciones y el contacto VAPID)
+APP_URL = "https://ktanafilms.github.io/nerf-arena/"
+TZ = "Europe/Madrid"
+# Las claves VAPID van como secretos: VAPID_PUBLIC y VAPID_PRIVATE (ver scripts/vapid.mjs)

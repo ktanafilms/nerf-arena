@@ -4,6 +4,7 @@
   import Hero from '../components/Hero.svelte';
   import { colorHex } from '../lib/types';
   import Avatar from '../components/Avatar.svelte';
+  import { account, accountsEnabled } from '../lib/account.svelte';
 
   const saved = HostSession.savedRoom();
   const p = app.prefs.profile;
@@ -20,6 +21,11 @@
       <span></span>
     {/if}
     <div class="tr">
+      {#if accountsEnabled}
+        <button class="hist" class:alert={account.warLive || account.invites} onclick={() => (app.screen = 'rivals')}>
+          {account.warLive ? '¡Guerra!' : 'Rivales'}{#if account.invites && !account.warLive}<i class="dot"></i>{/if}
+        </button>
+      {/if}
       <button class="hist" onclick={() => (app.screen = 'history')}>Historial</button>
       <button class="help" onclick={() => (app.screen = 'guide')} aria-label="Cómo se juega">?</button>
     </div>
@@ -93,6 +99,24 @@
     font-weight: 900;
     font-size: 16px;
     text-transform: uppercase;
+  }
+  .hist.alert {
+    border-color: var(--danger);
+    background: var(--danger);
+    color: #fff;
+    animation: blink 1s steps(2) infinite;
+  }
+  .hist {
+    position: relative;
+  }
+  .dot {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--danger);
   }
   .help {
     appearance: none;

@@ -64,7 +64,7 @@ function loadPrefs(): Prefs {
   }
 }
 
-export type Screen = 'home' | 'guide' | 'profile' | 'join' | 'room' | 'voicetest' | 'history';
+export type Screen = 'home' | 'guide' | 'profile' | 'join' | 'room' | 'voicetest' | 'history' | 'rivals';
 type After = { kind: 'create' } | { kind: 'join'; code: string } | { kind: 'solo' } | { kind: 'local' } | { kind: 'back' } | null;
 
 class App {
@@ -203,6 +203,7 @@ class App {
     } else {
       this.prefs.profile = p;
       this.savePrefs();
+      import('./account.svelte').then(({ account }) => account.updateLook(p.color, p.icon));
       if (this.session) this.session.send({ t: 'profile', profile: this.profile()! });
     }
     const a = this.after;

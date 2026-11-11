@@ -50,6 +50,15 @@ Al terminar una partida, **Vídeo del HUD** genera en el propio móvil un `.mov`
 - Códec PNG con canal alfa: se abre en Premiere, Final Cut, DaVinci Resolve y After Effects. Ponlo en una pista encima del vídeo de la cámara.
 - En iPhone, guárdalo con «Guardar en Archivos» o pásalo por AirDrop. Si lo guardas en Fotos, se pierde la transparencia.
 
+## Rivales y guerra diaria
+
+Con una cuenta (nombre + código de acceso, sin contraseñas ni correos) se le declara la rivalidad a otro jugador. Cada día, a una hora al azar entre las 10:00 y las 21:00 (hora de España), os llega a los dos una notificación: **guerra hasta medianoche**. El primero que reciba un dardo paga el kebab.
+
+- «Me ha dado» cuenta al momento. «Le he dado» lo tiene que confirmar el otro (si no contesta en 15 min, cuenta).
+- La app lleva la cuenta de kebabs pendientes; el que cobra marca «Me ha pagado uno».
+- Notificaciones: en Android, Chrome; en iPhone, solo con la app añadida a la pantalla de inicio (iOS 16.4 o posterior).
+- El servidor está en `server/` (Cloudflare Workers + D1, plan gratuito). Para publicarlo: `cd server && npx wrangler login && npm run publish`.
+
 ## Vídeo de toda la sesión
 
 En «Para el vídeo», si habéis hecho revanchas, se elige **Esta partida** o **Toda la sesión**: un solo `.mov` y un solo archivo de marcadores con todas las partidas.

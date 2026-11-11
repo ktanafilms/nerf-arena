@@ -72,3 +72,42 @@ self.addEventListener('fetch', (e) => {
     ),
   );
 });
+
+// ───────────── notificaciones (guerra diaria de rivales) ─────────────
+self.addEventListener('push', (e) => {
+  let d = {};
+  try {
+    d = e.data ? e.data.json() : {};
+  } catch {
+    d = { body: e.data ? e.data.text() : '' };
+  }
+  const show = self.registration.showNotification(d.title || 'Nerf Arena', {
+    body: d.body || '',
+    tag: d.tag,
+    renotify: !!d.tag,
+    icon: 'icon-192.png',
+    badge: 'icon-192.png',
+    requireInteraction: !!d.urgent,
+    vibrate: d.urgent ? [300, 120, 300, 120, 700] : [120],
+    data: { url: d.url },
+  });
+  // Si la app está abierta, que se actualice al momento
+  const tell = self.clients.matchAll({ type: 'window' }).then((cs) => cs.forEach((c) => c.postMessage({ type: 'push' })));
+  e.waitUntil(Promise.all([show, tell]));
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || new URL('./?rivales', self.registration.scope).href;
+  e.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((cs) => {
+      for (const c of cs) {
+        if (c.url.startsWith(self.registration.scope) && 'focus' in c) {
+          c.postMessage({ type: 'open-rivals' });
+          return c.focus();
+        }
+      }
+      return self.clients.openWindow(url);
+    }),
+  );
+});

@@ -9,6 +9,8 @@
   import RoomScreen from './screens/Room.svelte';
   import VoiceTest from './screens/VoiceTest.svelte';
   import HistoryScreen from './screens/HistoryScreen.svelte';
+  import Rivals from './screens/Rivals.svelte';
+  import { account } from './lib/account.svelte';
 
   // Enlace del QR: ?sala=ABCD → unirse directamente
   const params = new URLSearchParams(location.search);
@@ -219,8 +221,16 @@
     }
   }
 
+  // Al tocar una notificación de guerra se abre en ?rivales
+  const openRivals = params.has('rivales');
   if (!app.prefs.seenGuide) app.screen = 'guide';
   else if (pendingJoin) app.screen = 'join';
+  else if (openRivals) app.screen = 'rivals';
+  if (openRivals) history.replaceState(null, '', location.pathname);
+  account.refresh();
+  navigator.serviceWorker?.addEventListener('message', (e) => {
+    if (e.data?.type === 'open-rivals' && !app.session) app.screen = 'rivals';
+  });
 
   // El barrido de color solo entre pantallas, no al abrir la app
   let first = $state(true);
@@ -268,6 +278,8 @@
       <VoiceTest />
     {:else if app.screen === 'history'}
       <HistoryScreen />
+    {:else if app.screen === 'rivals'}
+      <Rivals />
     {/if}
   </div>
 {/key}
