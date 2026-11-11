@@ -12,7 +12,7 @@ crons = ["*/10 * * * *"]
 binding = "DB"
 database_name = "nerf-arena"
 # Lo rellena «wrangler d1 create nerf-arena» al publicar (en local no hace falta)
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "d494f4ff-eb7d-47df-9e41-8fb642019cce"
 
 [vars]
 # Webs que pueden usar la API
